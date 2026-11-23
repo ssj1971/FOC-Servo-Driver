@@ -1,190 +1,216 @@
-# SmartServo V4 Pro (I2C)
+<div align="center">
 
-**Turn any brushed DC motor + AS5600 magnetic encoder into a closed-loop smart servo with Wi-Fi control, live telemetry, and a full web dashboard — all on a single ESP32-S3.**
+# ⚙️ SmartServo V4 Pro
 
----
+### Turn any brushed DC motor into a closed-loop smart servo
 
-## Features
+**ESP32-S3 · AS5600 Encoder · BTS7960 H-Bridge · Wi-Fi Dashboard**
 
-| Category | Details |
-|---|---|
-| **MCU** | ESP32-S3 N16R8 (dual-core, 16 MB flash, 8 MB PSRAM) |
-| **Encoder** | AS5600 12-bit magnetic encoder over I2C @ 100 kHz |
-| **Motor Driver** | BTS7960 43A H-Bridge (RPWM / LPWM) |
-| **Control Modes** | Angle Lock (PID) · Speed PID · Manual PWM · Idle |
-| **Motion Profile** | Trapezoidal velocity-limited ramp for smooth moves |
-| **Networking** | Simultaneous AP + STA Wi-Fi; built-in async HTTP server |
-| **Dashboard** | Dark-themed, mobile-responsive, multi-tab web UI |
-| **Persistence** | All tunable parameters saved to NVS (ESP32 flash) |
-| **Safety** | E-Stop, stall detection, I2C auto-recovery, spike rejection |
-| **Control Loop** | ~500 Hz RTOS task pinned to Core 1 |
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/Platform-ESP32--S3-orange.svg)](https://docs.espressif.com/projects/esp-idf/en/latest/esp32s3/)
+[![PlatformIO](https://img.shields.io/badge/Build-PlatformIO-brightgreen.svg)](https://platformio.org/)
+[![Arduino](https://img.shields.io/badge/Framework-Arduino-teal.svg)](https://www.arduino.cc/)
 
 ---
 
-## Hardware
+*Precision position & speed control with real-time web telemetry — all from a single \$5 microcontroller.*
+
+</div>
+
+---
+
+## 📸 Dashboard
+
+<div align="center">
+
+<img src="docs/dashboard-screenshot.svg" alt="SmartServo V4 Pro Web Dashboard" width="100%"/>
+
+<sub>Dark-themed, mobile-responsive web dashboard with live graph, 4 control modes, and full PID tuning</sub>
+
+</div>
+
+---
+
+## 🔌 Wiring Diagram
+
+<div align="center">
+
+<img src="docs/wiring-diagram.svg" alt="Wiring Diagram — ESP32-S3, BTS7960, AS5600, 37GB-520 Motor" width="100%"/>
+
+</div>
+
+> [!IMPORTANT]
+> The AS5600's 6mm diametric magnet must be centered above the IC with a 1–3 mm air gap. The BTS7960's `R_EN` and `L_EN` pins must be tied to **3.3V** (or driven HIGH via GPIO) to enable motor output.
+
+---
+
+## ✨ Features
+
+<table>
+<tr>
+<td width="50%">
+
+### 🎯 Control
+- **4 Operating Modes** — Angle Lock, Speed PID, Manual PWM, Idle
+- **Trapezoidal Motion Profile** — Smooth velocity-limited ramps
+- **Asymmetric Stiction Compensation** — Independent CW/CCW min-PWM
+- **Configurable Deadzone** — Adjustable angle lock tolerance
+
+</td>
+<td width="50%">
+
+### 📡 Connectivity
+- **Dual Wi-Fi** — Simultaneous AP + STA mode
+- **Async Web Server** — Non-blocking HTTP on Core 0
+- **REST API** — Full JSON endpoints for integration
+- **~130 ms Telemetry** — Real-time dashboard updates
+
+</td>
+</tr>
+<tr>
+<td>
+
+### 🛡️ Safety & Reliability
+- **E-Stop Button** — Instant motor cutoff
+- **Stall Detection** — Configurable timeout protection
+- **I2C Auto-Recovery** — 9-clock bus reset on fault
+- **Spike Rejection** — Filters encoder glitches
+- **100 kHz I2C** — EMI-resistant bus speed
+
+</td>
+<td>
+
+### 💾 Persistence & Tuning
+- **NVS Flash Storage** — All parameters survive reboot
+- **Live PID Tuning** — Adjust gains without reflashing
+- **Auto-Calibration** — CW/CCW H-bridge verify + polarity set
+- **Factory Reset** — One-click return to defaults
+
+</td>
+</tr>
+</table>
+
+---
+
+## 🧰 Hardware
 
 ### Bill of Materials
 
-| Component | Description |
-|---|---|
-| ESP32-S3-DevKitC-1 (N16R8) | Main controller |
-| AS5600 | 12-bit contactless magnetic position sensor |
-| BTS7960 | 43A dual H-bridge motor driver module |
-| Brushed DC Motor | With 220:1 (or any) gearbox |
-| 6mm Diametrically-Magnetised Magnet | Mounted on motor shaft for AS5600 |
-| 12V Power Supply | Sized for your motor's stall current |
+| # | Component | Specification | Purpose |
+|---|---|---|---|
+| 1 | **ESP32-S3-DevKitC-1** | N16R8 (16 MB Flash / 8 MB PSRAM) | Main controller |
+| 2 | **BTS7960 Module** | 43A dual H-bridge | Motor driver |
+| 3 | **AS5600** | 12-bit magnetic rotary encoder | Position feedback |
+| 4 | **37GB-520 Motor** | 12V DC geared motor, 220:1 ratio | Actuator |
+| 5 | **6mm Diametric Magnet** | Axially magnetized (N-S across diameter) | Shaft-mounted for AS5600 |
+| 6 | **12V Battery / PSU** | Sized for motor stall current | Power supply |
 
-### Wiring
+### Pin Map
 
 ```
-ESP32-S3              BTS7960
-────────              ───────
-GPIO 14  ──────────►  RPWM
-GPIO 13  ──────────►  LPWM
-GND      ──────────►  GND
-                      VCC ◄── 12V Supply
-                      R_EN ── 3.3V (or GPIO for enable)
-                      L_EN ── 3.3V (or GPIO for enable)
-
-ESP32-S3              AS5600
-────────              ──────
-GPIO 12 (SDA) ─────►  SDA
-GPIO 11 (SCL) ─────►  SCL
-3.3V          ─────►  VCC
-GND           ─────►  GND
+ESP32-S3 GPIO    →   Peripheral
+─────────────────────────────────
+GPIO 14 (PWM)    →   BTS7960 RPWM
+GPIO 13 (PWM)    →   BTS7960 LPWM
+GPIO 12 (I2C)    →   AS5600 SDA
+GPIO 11 (I2C)    →   AS5600 SCL
+3.3V             →   AS5600 VCC, BTS7960 R_EN + L_EN
+GND              →   Common ground (all modules)
 ```
-
-> [!IMPORTANT]
-> The AS5600's diametric magnet must be centered above the IC with ~1-3 mm air gap. Misalignment causes noisy or missing readings.
 
 ---
 
-## Software Setup
+## 🚀 Quick Start
 
-### Prerequisites
-
-- [PlatformIO](https://platformio.org/) (CLI or VS Code extension)
-- USB-C cable for the ESP32-S3 DevKit
-
-### Build & Upload
+### 1. Install PlatformIO
 
 ```bash
-# Clone the repo
-git clone https://github.com/<your-username>/SmartServo-V4-Pro.git
+pip install platformio
+# or install the VS Code extension: "PlatformIO IDE"
+```
+
+### 2. Clone & Build
+
+```bash
+git clone https://github.com/ssj1971/SmartServo-V4-Pro.git
 cd SmartServo-V4-Pro
 
-# Build
+# Build firmware
 pio run
 
-# Upload (hold BOOT on first flash if needed)
+# Flash to ESP32-S3 (hold BOOT button on first flash)
 pio run --target upload
 
-# Monitor serial output
+# Open serial monitor
 pio device monitor
 ```
 
-### Wi-Fi Configuration
+### 3. Connect
 
-Edit the credentials at the top of `src/main.cpp`:
+| Method | SSID | Password | URL |
+|---|---|---|---|
+| **Direct AP** | `SmartServo_V2` | `12345678` | `http://192.168.4.1` |
+| **Your Wi-Fi** | *(edit in code)* | *(edit in code)* | *(see serial output)* |
+
+Edit Wi-Fi credentials in [`src/main.cpp` lines 7–8](src/main.cpp#L7-L8):
 
 ```cpp
-const char* WIFI_SSID = "iot";
-const char* WIFI_PASS = "111222333";
+const char* WIFI_SSID = "your-wifi";
+const char* WIFI_PASS = "your-password";
 ```
-
-The ESP32 runs in **AP + STA** mode simultaneously:
-
-| Network | SSID | Password | Default IP |
-|---|---|---|---|
-| **Access Point** | `SmartServo_V2` | `12345678` | `192.168.4.1` |
-| **Station** | *(your Wi-Fi)* | *(your password)* | *(DHCP assigned — see serial)* |
 
 ---
 
-## Web Dashboard
+## 🖥️ Dashboard Tabs
 
-Open `http://<ESP32-IP>/` in any browser. The dashboard has four tabs:
-
-### Control Tab
-- **Mode selector**: Idle / Angle Lock / Speed PID / Manual PWM
-- **Angle mode**: Slider + presets (-180°, -90°, 0°, +90°, +180°, +360°)
-- **Speed mode**: Target velocity in °/s with presets
-- **Manual mode**: Direct PWM drive with CW/CCW test buttons
-- **Speed limit** and **max torque** sliders
-
-### PID & Motion Tab
-- Angle PID gains: Kp, Ki, Kd
-- Speed PID gains: Kp, Ki
-- Velocity filter alpha (low-pass smoothing)
-- Deadzone tolerance
-- **Apply & Save to Flash** persists all values to NVS
-
-### Calibration Tab
-- **Auto-Calibration**: Spins the motor CW then CCW to verify both H-bridge directions and automatically set encoder polarity
-- Live AS5600 raw value + I2C health status
-- Encoder polarity toggle
-- Spike rejection threshold
-- Force I2C bus recovery
-
-### Hardware Tab
-- Gear ratio (supports any gearbox)
-- Min PWM for CW / CCW (asymmetric stiction compensation)
-- PWM frequency (1–25 kHz)
-- Stall protection enable + timeout
-- **Factory Reset** button
-
----
-
-## Control Architecture
-
-```
-                        ┌──────────────────────────────────────────────┐
-   Browser (Wi-Fi)      │              ESP32-S3                        │
-  ┌──────────────┐      │                                              │
-  │  Web Dashboard│◄────►│ Core 0: AsyncWebServer + Wi-Fi              │
-  │  (HTML/JS)   │ HTTP │                                              │
-  └──────────────┘      │ Core 1: RTOS Control Task (~500 Hz)          │
-                        │  ┌─────────┐    ┌─────────┐    ┌─────────┐  │
-                        │  │ Encoder  │───►│  PID    │───►│ Motor   │  │
-                        │  │ AS5600   │    │ Control │    │ BTS7960 │  │
-                        │  │ (I2C)    │    │         │    │ (PWM)   │  │
-                        │  └─────────┘    └─────────┘    └─────────┘  │
-                        │        ▲              │                      │
-                        │        │    NVS Flash Storage                │
-                        │        └──── (Preferences)                   │
-                        └──────────────────────────────────────────────┘
-```
-
-- **Core 0** handles Wi-Fi, HTTP requests, and the web dashboard
-- **Core 1** runs the real-time control loop at ~500 Hz with I2C encoder reads, PID computation, and PWM output
-- Communication between cores uses `volatile` shared variables (safe for single-writer patterns)
-
----
-
-## API Endpoints
-
-All endpoints accept HTTP GET requests.
-
-| Endpoint | Description |
+| Tab | What It Does |
 |---|---|
-| `GET /` | Serves the web dashboard |
-| `GET /cmd?...` | Real-time commands (mode, target, enable, zero, etc.) |
-| `GET /save?...` | Apply + persist tuning parameters to NVS |
-| `GET /getparams` | Returns current parameters as JSON |
-| `GET /status` | Returns live telemetry as JSON (~8 Hz poll) |
-| `GET /factory` | Factory reset all NVS settings |
+| **Control** | Switch modes, set target angle/speed/PWM, adjust speed & torque limits |
+| **PID & Motion** | Tune angle PID (Kp, Ki, Kd), speed PID, velocity filter, deadzone |
+| **Calibration** | Auto-cal (spins CW/CCW), live I2C raw value, polarity, spike filter |
+| **Hardware** | Gear ratio, asymmetric min-PWM, PWM frequency, stall protection, factory reset |
 
-### Example: Set target angle to 90°
+---
+
+## 🏗️ Architecture
+
 ```
-GET /cmd?tDeg=90
+                    ┌──────────────────────────────────────────────┐
+  Browser           │              ESP32-S3                        │
+ ┌──────────┐       │                                              │
+ │   Web    │◄─────►│  Core 0: AsyncWebServer + Wi-Fi              │
+ │Dashboard │  HTTP  │                                              │
+ └──────────┘       │  Core 1: RTOS Control Task (~500 Hz)         │
+                    │   ┌────────┐   ┌─────────┐   ┌──────────┐   │
+                    │   │AS5600  │──►│  PID /   │──►│ BTS7960  │   │
+                    │   │Encoder │   │ Profile  │   │ H-Bridge │   │
+                    │   │(I2C)   │   │          │   │  (PWM)   │   │
+                    │   └────────┘   └─────────┘   └──────────┘   │
+                    │                      │                       │
+                    │               NVS Flash Storage              │
+                    └──────────────────────────────────────────────┘
 ```
 
-### Example: Switch to speed mode at 45°/s
-```
-GET /cmd?mode=2&tVel=45
-```
+- **Core 0** — Wi-Fi stack, HTTP server, dashboard serving
+- **Core 1** — Real-time control at ~500 Hz: encoder read → PID → PWM output
+- **NVS** — All tuning parameters persisted across reboots
 
-### Status JSON response
+---
+
+## 📡 REST API
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/` | GET | Web dashboard |
+| `/cmd?mode=1&tDeg=90` | GET | Send real-time commands |
+| `/save?p=5&i=0.08&d=0.08` | GET | Apply & persist parameters |
+| `/getparams` | GET | Current parameters (JSON) |
+| `/status` | GET | Live telemetry (JSON) |
+| `/factory` | GET | Factory reset |
+
+<details>
+<summary><b>Example: Status Response</b></summary>
+
 ```json
 {
   "pos": 89.72,
@@ -203,71 +229,83 @@ GET /cmd?mode=2&tVel=45
 }
 ```
 
----
+</details>
 
-## Default Tuning Parameters
+<details>
+<summary><b>Command Parameters</b></summary>
 
-| Parameter | Default | Description |
+| Parameter | Description | Example |
 |---|---|---|
-| Kp | 5.0 | Angle PID proportional |
-| Ki | 0.08 | Angle PID integral |
-| Kd | 0.08 | Angle PID derivative |
-| velKp | 1.2 | Speed PID proportional |
-| velKi | 2.0 | Speed PID integral |
-| Tolerance | 0.5° | Deadzone for angle lock |
-| Max Velocity | 180°/s | Motion profile speed limit |
-| Vel Alpha | 0.20 | Velocity low-pass filter (0.05–1.0) |
-| PWM Freq | 7000 Hz | Motor PWM frequency |
-| Max PWM | 255 | Torque limit |
-| Min PWM CW | 45 | Minimum PWM to overcome CW stiction |
-| Min PWM CCW | 45 | Minimum PWM to overcome CCW stiction |
-| Gear Ratio | 220:1 | Gearbox reduction ratio |
-| Spike Limit | 1600 | Reject encoder jumps > N ticks |
-| Stall Enable | false | Stall detection off by default |
-| Stall Timeout | 2000 ms | Time before stall fault triggers |
+| `mode` | 0=Idle, 1=Angle, 2=Speed, 3=Manual | `mode=1` |
+| `tDeg` | Target angle (°) | `tDeg=90` |
+| `tVel` | Target speed (°/s) | `tVel=45` |
+| `mPwm` | Manual PWM (-255 to 255) | `mPwm=160` |
+| `en` | Enable (1) / Disable (0) | `en=0` |
+| `zero` | Set current position as zero | `zero=1` |
+| `cal` | Run auto-calibration | `cal=1` |
+
+</details>
 
 ---
 
-## Troubleshooting
+## ⚙️ Default Parameters
 
-| Symptom | Likely Cause | Fix |
+| Parameter | Default | Range | Description |
+|---|---|---|---|
+| **Kp** | 5.0 | 0–50 | Angle PID proportional gain |
+| **Ki** | 0.08 | 0–5 | Angle PID integral gain |
+| **Kd** | 0.08 | 0–5 | Angle PID derivative gain |
+| **Speed Kp** | 1.2 | 0–20 | Speed PID proportional |
+| **Speed Ki** | 2.0 | 0–20 | Speed PID integral |
+| **Tolerance** | 0.5° | 0.1–5 | Angle lock deadzone |
+| **Max Velocity** | 180°/s | 10–500 | Motion profile speed limit |
+| **Vel Alpha** | 0.20 | 0.05–1.0 | Velocity low-pass filter |
+| **PWM Freq** | 7000 Hz | 1k–25k | Motor PWM frequency |
+| **Max PWM** | 255 | 60–255 | Torque limit |
+| **Min PWM CW** | 45 | 0–150 | Stiction compensation (CW) |
+| **Min PWM CCW** | 45 | 0–150 | Stiction compensation (CCW) |
+| **Gear Ratio** | 220:1 | — | Gearbox reduction |
+
+---
+
+## 🔧 Troubleshooting
+
+| Symptom | Cause | Fix |
 |---|---|---|
-| Dashboard won't load | Not connected to AP or STA | Connect to `SmartServo_V2` Wi-Fi, navigate to `192.168.4.1` |
-| Motor oscillates wildly | PID gains too high | Reduce Kp, increase Kd |
-| Motor won't move at low angles | Stiction | Increase Min PWM CW/CCW |
-| I2C FAULT badge | Wiring / magnet issue | Check SDA/SCL wiring; check magnet alignment; press "Force I2C Reset" |
-| Auto-cal says "FAULT: No movement" | Motor not powered or driver wiring wrong | Check 12V supply, BTS7960 enable pins, motor connections |
-| Position drifts over time | Encoder polarity wrong | Run Auto-Calibration, or manually toggle encoder polarity |
+| Dashboard won't load | Not on correct network | Connect to `SmartServo_V2` AP → `192.168.4.1` |
+| Motor oscillates | PID too aggressive | Lower Kp, raise Kd slightly |
+| Won't move at small angles | Stiction | Raise Min PWM CW/CCW in Hardware tab |
+| **I2C FAULT** badge | Wiring or magnet issue | Check SDA/SCL wiring, magnet alignment → "Force I2C Reset" |
+| Auto-cal: "No movement" | No power or driver fault | Check 12V supply, BTS7960 enable pins |
+| Position drifts | Wrong encoder polarity | Run Auto-Calibration or toggle polarity manually |
 
 ---
 
-## Project Structure
+## 📁 Project Structure
 
 ```
 SmartServo-V4-Pro/
 ├── src/
-│   └── main.cpp          # All firmware code (single-file for easy Arduino IDE compat)
-├── platformio.ini         # PlatformIO project configuration
+│   └── main.cpp              # Complete firmware (single file)
+├── docs/
+│   ├── dashboard-screenshot.svg
+│   └── wiring-diagram.svg
+├── platformio.ini             # Build configuration
 ├── .gitignore
-├── LICENSE
+├── LICENSE                    # MIT
 └── README.md
 ```
 
 ---
 
-## License
+<div align="center">
 
-This project is released under the [MIT License](LICENSE).
+## 📜 License
 
----
-
-## Contributing
-
-1. Fork this repository
-2. Create a feature branch (`git checkout -b feature/my-improvement`)
-3. Commit your changes
-4. Push and open a Pull Request
+Released under the [MIT License](LICENSE). Use it, modify it, build cool robots with it.
 
 ---
 
-*Built with ❤️ for the ESP32 robotics & maker community.*
+**[⬆ Back to Top](#️-smartservo-v4-pro)**
+
+</div>
