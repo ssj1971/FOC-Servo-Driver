@@ -13,6 +13,20 @@ const int motorLPWM = 13; // BTS7960 LPWM
 const int I2C_SDA   = 12; // AS5600 SDA
 const int I2C_SCL   = 11; // AS5600 SCL
 
+// ================= DEFAULT PID & MOTION CONSTANTS (56:1 FAST) =================
+const float DEF_GEAR_RATIO = 56.0f;   // 56:1 gearbox
+const float DEF_KP         = 7.5f;    // Crisp stiffness
+const float DEF_KI         = 0.15f;   // Fast steady-state correction
+const float DEF_KD         = 0.12f;   // Velocity damping
+const float DEF_KFF        = 0.55f;   // Velocity Feedforward (PWM per deg/s)
+const float DEF_VEL_KP     = 1.4f;
+const float DEF_VEL_KI     = 2.5f;
+const float DEF_TOL        = 0.50f;
+const float DEF_ALPHA      = 0.30f;   // Low-lag velocity filter
+const float DEF_MAX_VEL    = 360.0f;  // Fast output speed limit (deg/s)
+const float DEF_ACCEL      = 900.0f;  // Snappy acceleration (deg/s^2)
+const int   DEF_SLEW       = 24;      // Fast response while still protecting gears
+
 // ================= CONTROL MODES =================
 enum CtrlMode : uint8_t {
   MODE_IDLE   = 0,
@@ -22,54 +36,65 @@ enum CtrlMode : uint8_t {
 };
 
 // ================= TUNABLE PARAMETERS (SAVED TO NVS) =================
-float Kp          = 5.0f;    // Angle Lock P
-float Ki          = 0.08f;   // Angle Lock I
-float Kd          = 0.08f;   // Angle Lock D
-float velKp       = 1.2f;    // Speed Mode P
-float velKi       = 2.0f;    // Speed Mode I
-float tolerance   = 0.5f;    // Angle lock deadzone (deg)
-float maxDeg      = 360.0f;  // Slider bounds (±deg)
-float gearRatio   = 220.0f;  // 220:1 gearbox
-float maxVelocity = 180.0f;  // Motion profile speed limit (deg/s)
-float velAlpha    = 0.20f;   // Velocity low-pass smoothing (0.05 - 1.0)
+float Kp          = DEF_KP;
+float Ki          = DEF_KI;
+float Kd          = DEF_KD;
+float Kff         = DEF_KFF;
+float velKp       = DEF_VEL_KP;
+float velKi       = DEF_VEL_KI;
+float tolerance   = DEF_TOL;
+float maxDeg      = 360.0f;
+float gearRatio   = DEF_GEAR_RATIO;
+float maxVelocity = DEF_MAX_VEL;
+float maxAccel    = DEF_ACCEL;
+float velAlpha    = DEF_ALPHA;
 
-int   pwmFreq     = 7000;    // 7 kHz default PWM
-int   maxPWM      = 255;     // Torque limit (60 - 255)
-int   minPWM_CW   = 45;      // Min PWM for CW stiction
-int   minPWM_CCW  = 45;      // Min PWM for CCW stiction
-int   encDir      = 1;       // +1 or -1
-int   spikeLimit  = 1600;    // Reject impossible single-step tick jumps
-bool  stallEnable = false;   // OFF by default so hand-hold tests don't trip
-int   stallMs     = 2000;    // Stall timeout (ms)
+int   pwmFreq     = 7000;
+int   maxPWM      = 255;
+int   minPWM_CW   = 40;
+int   minPWM_CCW  = 40;
+int   pwmSlew     = DEF_SLEW;
+int   encDir      = 1;
+int   spikeLimit  = 1600;
+bool  stallEnable = false;
+int   stallMs     = 2000;
 
 // ================= LIVE STATE & TELEMETRY =================
-volatile uint8_t  g_mode        = MODE_ANGLE;
-volatile bool     servoEnabled  = true;
-volatile bool     isStalled     = false;
-volatile bool     isCalibrating = false;
-volatile bool     reqAutoCal    = false;
-volatile bool     reqI2CRecover = false;
+volatile uint8_t  g_mode           = MODE_ANGLE;
+volatile bool     servoEnabled     = true;
+volatile bool     isStalled        = false;
+volatile bool     isPositionLocked = true;
+volatile bool     isCalibrating    = false;
+volatile bool     isAutoTuning     = false;
+volatile bool     reqAutoCal       = false;
+volatile bool     reqAutoPid       = false;
+volatile bool     reqI2CRecover    = false;
+volatile int      tuneProgress     = 0;
 
-volatile float    targetDeg     = 0.0f;
-volatile float    targetVel     = 0.0f;
-volatile int      manualPWM     = 0;
+volatile float    targetDeg        = 0.0f;
+volatile float    targetVel        = 0.0f;
+volatile int      manualPWM        = 0;
 
-volatile float    currentDeg    = 0.0f;
-volatile float    currentVel    = 0.0f;
-volatile int      currentPWM   = 0;
-volatile int      liveRaw       = 0;
-volatile int      loopHz        = 0;
-volatile bool     encHealthy    = true;
-volatile uint32_t i2cRecoveries = 0;
+volatile float    currentDeg       = 0.0f;
+volatile float    currentVel       = 0.0f;
+volatile int      currentPWM       = 0;
+volatile int      liveRaw          = 0;
+volatile int      loopHz           = 0;
+volatile bool     encHealthy       = true;
+volatile uint32_t i2cRecoveries    = 0;
 
-char calStatusMsg[96] = "Ready (Run Auto-Cal to verify CW/CCW & Polarity)";
+char calStatusMsg[112] = "Ready (Run Auto-Cal to verify CW/CCW, Polarity & I2C EMI)";
+char pidStatusMsg[128] = "Ready (Tap 30s Auto-PID for 7-stage fast & smooth tuning)";
 
 // ================= INTERNAL CONTROL VARS =================
 bool  pwmInitialized = false;
-float integral = 0.0f, lastError = 0.0f;
-float velIntegral = 0.0f;
-float currentProfiledTarget = 0.0f;
-float prevDeg = 0.0f;
+float integral       = 0.0f;
+float velIntegral    = 0.0f;
+float profPos        = 0.0f;
+float profVel        = 0.0f;
+float lastTargetDeg  = 0.0f;
+float prevDeg        = 0.0f;
+float slewedPWM      = 0.0f;
 
 int     lastRaw      = 0;
 long    totalTicks   = 0;
@@ -78,10 +103,14 @@ uint8_t i2cFailCount = 0;
 
 unsigned long lastLoopTime   = 0;
 unsigned long stallStartTime = 0;
+unsigned long settleStartMs  = 0;
 
 TaskHandle_t controlTaskHandle;
 Preferences prefs;
 AsyncWebServer server(80);
+
+// ================= FORWARD DECLARATIONS =================
+void saveSettingsToNVS();
 
 // ================= PWM SETUP & OUTPUT =================
 void setupPWM(int freq) {
@@ -110,6 +139,7 @@ void setupPWM(int freq) {
 inline void writeMotorRaw(int pwm) {
   pwm = constrain(pwm, -maxPWM, maxPWM);
   currentPWM = pwm;
+  slewedPWM  = (float)pwm;
   uint8_t rVal = (pwm > 0) ? (uint8_t)pwm    : 0;
   uint8_t lVal = (pwm < 0) ? (uint8_t)(-pwm) : 0;
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
@@ -121,7 +151,43 @@ inline void writeMotorRaw(int pwm) {
 #endif
 }
 
-// ================= AS5600 I2C (100 kHz, 0x0E ONLY, CLEAN STOP) =================
+// Fast slew-limited PWM writer with hard zero cutoff (never dribbles idle PWM)
+inline void writeMotorSmooth(float targetPwm, float dt) {
+  targetPwm = constrain(targetPwm, (float)(-maxPWM), (float)maxPWM);
+
+  if (targetPwm == 0.0f) {
+    if (fabsf(slewedPWM) <= 24.0f) {
+      writeMotorRaw(0);
+      return;
+    }
+  }
+
+  float maxStep = (float)max(pwmSlew, 2) * (dt * 1000.0f);
+  if (maxStep < 1.5f) maxStep = 1.5f;
+
+  if (targetPwm > slewedPWM + maxStep)      slewedPWM += maxStep;
+  else if (targetPwm < slewedPWM - maxStep) slewedPWM -= maxStep;
+  else                                      slewedPWM = targetPwm;
+
+  int pwm = (int)roundf(slewedPWM);
+  if (targetPwm == 0.0f && abs(pwm) <= 20) {
+    pwm = 0;
+    slewedPWM = 0.0f;
+  }
+
+  currentPWM = pwm;
+  uint8_t rVal = (pwm > 0) ? (uint8_t)pwm    : 0;
+  uint8_t lVal = (pwm < 0) ? (uint8_t)(-pwm) : 0;
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+  ledcWrite(motorRPWM, rVal);
+  ledcWrite(motorLPWM, lVal);
+#else
+  ledcWrite(0, rVal);
+  ledcWrite(1, lVal);
+#endif
+}
+
+// ================= AS5600 I2C (400 kHz, 0x0E ONLY, CLEAN STOP) =================
 void recoverI2C() {
   writeMotorRaw(0);
   Wire.end();
@@ -130,13 +196,13 @@ void recoverI2C() {
 
   for (int i = 0; i < 9; i++) {
     digitalWrite(I2C_SCL, LOW);
-    delayMicroseconds(10);
+    delayMicroseconds(5);
     digitalWrite(I2C_SCL, HIGH);
-    delayMicroseconds(10);
+    delayMicroseconds(5);
   }
 
   Wire.begin(I2C_SDA, I2C_SCL);
-  Wire.setClock(100000); // 100 kHz for strong EMI immunity
+  Wire.setClock(400000);
   Wire.setTimeOut(5);
   i2cRecoveries++;
 }
@@ -144,7 +210,7 @@ void recoverI2C() {
 inline bool readAS5600Raw(int &outRaw) {
   Wire.beginTransmission(0x36);
   Wire.write(0x0E); // Angle register ONLY
-  if (Wire.endTransmission(true) != 0) return false; // Clean STOP condition
+  if (Wire.endTransmission(true) != 0) return false;
   if (Wire.requestFrom((uint8_t)0x36, (uint8_t)2, (uint8_t)true) != 2) return false;
   outRaw = ((Wire.read() & 0x0F) << 8) | Wire.read();
   return true;
@@ -169,7 +235,6 @@ inline void updateEncoder(float dt) {
   if (diff > 2048)  diff -= 4096;
   if (diff < -2048) diff += 4096;
 
-  // Reject impossible single-step magnetic/I2C glitch
   if (abs(diff) < spikeLimit) {
     totalTicks += diff;
     lastRaw = raw;
@@ -186,51 +251,164 @@ inline void updateEncoder(float dt) {
   currentDeg = newDeg;
 }
 
-void resetControllers() {
-  integral = 0.0f;
-  lastError = 0.0f;
-  velIntegral = 0.0f;
-  isStalled = false;
-  stallStartTime = 0;
-  currentProfiledTarget = currentDeg;
+void resetControllers(bool lockNow = false) {
+  integral         = 0.0f;
+  velIntegral      = 0.0f;
+  isStalled        = false;
+  stallStartTime   = 0;
+  settleStartMs    = 0;
+  profPos          = currentDeg;
+  profVel          = 0.0f;
+  lastTargetDeg    = targetDeg;
+  isPositionLocked = lockNow;
+  writeMotorRaw(0);
 }
 
-// ================= ASYMMETRIC-SAFE MOTOR DRIVE =================
-void drivePIDOutput(float output, bool checkDeadzone) {
-  if (!servoEnabled || isStalled || !encHealthy) {
+void resetPidDefaults() {
+  Kp          = DEF_KP;
+  Ki          = DEF_KI;
+  Kd          = DEF_KD;
+  Kff         = DEF_KFF;
+  velKp       = DEF_VEL_KP;
+  velKi       = DEF_VEL_KI;
+  tolerance   = DEF_TOL;
+  velAlpha    = DEF_ALPHA;
+  maxVelocity = DEF_MAX_VEL;
+  maxAccel    = DEF_ACCEL;
+  pwmSlew     = DEF_SLEW;
+  saveSettingsToNVS();
+  resetControllers(true);
+  snprintf(pidStatusMsg, sizeof(pidStatusMsg), "PID reset to fast 56:1 defaults (P:%.1f D:%.2f FF:%.2f)", Kp, Kd, Kff);
+}
+
+// ================= FAST ANGLE CONTROL + HARD 0-PWM IDLE LATCH =================
+void runAngleLockStep(float dt, bool allowStallCheck) {
+  float totalErr = targetDeg - currentDeg;
+
+  // Unlock if target moved
+  if (fabsf(targetDeg - lastTargetDeg) > 0.05f) {
+    isPositionLocked = false;
+    settleStartMs    = 0;
+    lastTargetDeg    = targetDeg;
+  }
+
+  // Hysteresis band for waking up from silent 0-PWM lock
+  float unlockBand = max(tolerance * 2.2f, tolerance + 0.55f);
+  if (isPositionLocked) {
+    if (fabsf(totalErr) > unlockBand) {
+      isPositionLocked = false;
+      settleStartMs    = 0;
+      profPos          = currentDeg;
+      profVel          = 0.0f;
+    } else {
+      // Strictly 0 PWM at idle
+      integral = 0.0f;
+      profPos  = targetDeg;
+      profVel  = 0.0f;
+      stallStartTime = 0;
+      if (currentPWM != 0 || slewedPWM != 0.0f) writeMotorRaw(0);
+      return;
+    }
+  }
+
+  // 1. Fast Trapezoidal Acceleration-Limited Motion Profiler
+  float rem  = targetDeg - profPos;
+  float dist = fabsf(rem);
+  float dir  = (rem >= 0.0f) ? 1.0f : -1.0f;
+  float aMax = max(maxAccel, 50.0f);
+
+  float desiredVel = 0.0f;
+  if (dist > 0.02f) {
+    float vBrake = sqrtf(2.0f * aMax * dist);
+    desiredVel = dir * min(maxVelocity, vBrake);
+  }
+
+  float dvMax = aMax * dt;
+  if (desiredVel > profVel + dvMax)      profVel += dvMax;
+  else if (desiredVel < profVel - dvMax) profVel -= dvMax;
+  else                                   profVel = desiredVel;
+
+  profPos += profVel * dt;
+
+  if (fabsf(targetDeg - profPos) < 0.04f && fabsf(profVel) < 2.0f) {
+    profPos = targetDeg;
+    profVel = 0.0f;
+  }
+
+  // 2A. Immediate silent 0-PWM lock when inside tolerance
+  if (fabsf(totalErr) <= tolerance && fabsf(profVel) < 2.0f && fabsf(currentVel) < 5.0f) {
+    isPositionLocked = true;
+    settleStartMs    = 0;
+    integral         = 0.0f;
+    stallStartTime   = 0;
     writeMotorRaw(0);
     return;
   }
 
-  if (checkDeadzone && fabsf(targetDeg - currentDeg) < tolerance) {
-    writeMotorRaw(0);
-    return;
+  // 2B. Settle-Timeout Latch: if friction holds shaft motionless right beside target for 220ms -> hard 0 PWM
+  if (fabsf(profVel) < 2.0f && fabsf(totalErr) <= unlockBand && fabsf(currentVel) < 1.5f) {
+    if (settleStartMs == 0) settleStartMs = millis();
+    else if (millis() - settleStartMs >= 220) {
+      isPositionLocked = true;
+      settleStartMs    = 0;
+      integral         = 0.0f;
+      stallStartTime   = 0;
+      writeMotorRaw(0);
+      return;
+    }
+  } else {
+    settleStartMs = 0;
   }
 
-  int minP = (output >= 0.0f) ? minPWM_CW : minPWM_CCW;
-  int mag  = (int)roundf(fabsf(output));
-  if (mag < minP) mag = minP;
-  if (mag > maxPWM) mag = maxPWM;
+  // 3. Feedforward + Crisp PID with Velocity Damping
+  float trackErr = profPos - currentDeg;
+  if (fabsf(trackErr) < 30.0f) {
+    integral = constrain(integral + trackErr * dt, -140.0f, 140.0f);
+  } else {
+    integral *= 0.85f;
+  }
 
-  writeMotorRaw((output >= 0.0f) ? mag : -mag);
+  float velErr = profVel - currentVel;
+  float out = (Kff * profVel) + (Kp * trackErr) + (Ki * integral) + (Kd * velErr);
+
+  // Stiction compensation (always enough to actually overcome friction, or 0)
+  float minP = (out >= 0.0f) ? (float)minPWM_CW : (float)minPWM_CCW;
+  float errScale = constrain(fabsf(totalErr) / max(tolerance * 2.5f, 0.8f), 0.25f, 1.0f);
+  float velScale = constrain(fabsf(profVel) / 20.0f, 0.0f, 1.0f);
+  float blend = max(errScale, velScale);
+
+  float cmd = 0.0f;
+  if (fabsf(out) > 1.5f) {
+    float cmdMag = constrain(fabsf(out) + (minP * blend), 0.0f, (float)maxPWM);
+    cmd = (out >= 0.0f) ? cmdMag : -cmdMag;
+  }
+
+  if (allowStallCheck && stallEnable && fabsf(cmd) >= (maxPWM - 5) && fabsf(currentVel) < 1.0f) {
+    if (stallStartTime == 0) stallStartTime = millis();
+    else if (millis() - stallStartTime > (unsigned long)stallMs) isStalled = true;
+  } else {
+    stallStartTime = 0;
+  }
+
+  writeMotorSmooth(cmd, dt);
 }
 
-// ================= AUTO CALIBRATION (CW/CCW H-BRIDGE + POLARITY) =================
+// ================= AUTO CALIBRATION (CW/CCW H-BRIDGE + POLARITY + EMI CHECK) =================
 void runAutoCalibration() {
   isCalibrating = true;
-  snprintf(calStatusMsg, sizeof(calStatusMsg), "Calibrating: Spinning CW...");
+  snprintf(calStatusMsg, sizeof(calStatusMsg), "Calibrating: Spinning CW & checking I2C...");
   writeMotorRaw(0);
   vTaskDelay(100 / portTICK_PERIOD_MS);
 
-  int testPWM = constrain(max(130, max(minPWM_CW, minPWM_CCW) + 60), 100, maxPWM);
+  int testPWM = constrain(max(135, max(minPWM_CW, minPWM_CCW) + 60), 100, maxPWM);
   int prevR = lastRaw;
   readAS5600Raw(prevR);
+  int loadI2cErrs = 0;
 
-  // 1. Spin Positive (RPWM) for 900 ms
   long cwTicks = 0;
   writeMotorRaw(testPWM);
   unsigned long t0 = millis();
-  while (millis() - t0 < 900) {
+  while (millis() - t0 < 800) {
     int r = prevR;
     if (readAS5600Raw(r)) {
       liveRaw = r;
@@ -238,19 +416,20 @@ void runAutoCalibration() {
       if (d > 2048) d -= 4096;
       if (d < -2048) d += 4096;
       if (abs(d) < spikeLimit) { cwTicks += d; prevR = r; }
+    } else {
+      loadI2cErrs++;
     }
-    vTaskDelay(2);
+    vTaskDelay(1);
   }
   writeMotorRaw(0);
-  vTaskDelay(250 / portTICK_PERIOD_MS);
+  vTaskDelay(220 / portTICK_PERIOD_MS);
 
-  // 2. Spin Negative (LPWM) for 900 ms
-  snprintf(calStatusMsg, sizeof(calStatusMsg), "Calibrating: Spinning CCW...");
+  snprintf(calStatusMsg, sizeof(calStatusMsg), "Calibrating: Spinning CCW & checking I2C...");
   long ccwTicks = 0;
   readAS5600Raw(prevR);
   writeMotorRaw(-testPWM);
   t0 = millis();
-  while (millis() - t0 < 900) {
+  while (millis() - t0 < 800) {
     int r = prevR;
     if (readAS5600Raw(r)) {
       liveRaw = r;
@@ -258,13 +437,14 @@ void runAutoCalibration() {
       if (d > 2048) d -= 4096;
       if (d < -2048) d += 4096;
       if (abs(d) < spikeLimit) { ccwTicks += d; prevR = r; }
+    } else {
+      loadI2cErrs++;
     }
-    vTaskDelay(2);
+    vTaskDelay(1);
   }
   writeMotorRaw(0);
   vTaskDelay(150 / portTICK_PERIOD_MS);
 
-  // 3. Evaluate Results
   bool cwMoved  = (abs(cwTicks)  > 400);
   bool ccwMoved = (abs(ccwTicks) > 400);
 
@@ -272,8 +452,8 @@ void runAutoCalibration() {
     encDir = (cwTicks > 0) ? 1 : -1;
     prefs.putInt("dir", encDir);
     snprintf(calStatusMsg, sizeof(calStatusMsg),
-             "OK! Dir:%+d (CW:%ld ticks, CCW:%ld ticks)",
-             encDir, cwTicks, ccwTicks);
+             "OK! Dir:%+d | CW:%ld CCW:%ld | I2C Errs:%d (Idle 0 PWM)",
+             encDir, cwTicks, ccwTicks, loadI2cErrs);
   } else if (cwMoved && !ccwMoved) {
     snprintf(calStatusMsg, sizeof(calStatusMsg),
              "FAULT: LPWM (GPIO13 / L_EN) did NOT move! Check BTS7960.");
@@ -282,20 +462,359 @@ void runAutoCalibration() {
              "FAULT: RPWM (GPIO14 / R_EN) did NOT move! Check BTS7960.");
   } else {
     snprintf(calStatusMsg, sizeof(calStatusMsg),
-             "FAULT: No movement! Check motor power & I2C (SDA12/SCL11).");
+             "FAULT: No movement! Check motor power & I2C (Errs:%d).", loadI2cErrs);
   }
 
   readAS5600Raw(lastRaw);
   homeOffset = totalTicks;
   currentDeg = 0.0f;
-  prevDeg = 0.0f;
-  targetDeg = 0.0f;
-  currentProfiledTarget = 0.0f;
-  resetControllers();
+  prevDeg    = 0.0f;
+  targetDeg  = 0.0f;
+  resetControllers(true); // Hard 0 PWM & locked
   isCalibrating = false;
 }
 
-// ================= CORE 1 RTOS CONTROL TASK (~500 Hz, 100 kHz I2C SAFE) =================
+// ================= OPTIMIZED 7-STAGE 30-SECOND FAST AUTO-PID =================
+void runAutoPidTune() {
+  isAutoTuning = true;
+  tuneProgress = 2;
+  writeMotorRaw(0);
+  vTaskDelay(150 / portTICK_PERIOD_MS);
+
+  unsigned long prevUs = micros();
+  auto stepEnc = [&]() -> float {
+    unsigned long nowUs = micros();
+    float dt = (nowUs - prevUs) * 1e-6f;
+    if (dt <= 0.0f || dt > 0.05f) dt = 0.001f;
+    prevUs = nowUs;
+    updateEncoder(dt);
+    return dt;
+  };
+
+  stepEnc();
+  float centerDeg = currentDeg;
+  float abortCode = 0.0f;
+
+  struct StepMetrics {
+    float maxOvershoot;
+    float maxTrackLag;
+    float steadyErr;
+    int   riseMs;
+    int   pwmFlips;
+  };
+
+  auto runStepTest = [&](float destDeg, unsigned long durationMs) -> StepMetrics {
+    StepMetrics m = {0.0f, 0.0f, 0.0f, (int)durationMs, 0};
+    float startDeg = currentDeg;
+    float stepSpan = fabsf(destDeg - startDeg);
+
+    targetDeg        = destDeg;
+    lastTargetDeg    = destDeg;
+    isPositionLocked = false;
+    settleStartMs    = 0;
+    profPos          = currentDeg;
+    profVel          = 0.0f;
+    integral         = 0.0f;
+
+    float stepDir = (destDeg >= startDeg) ? 1.0f : -1.0f;
+    bool reached90 = false;
+    int lastSign = 0;
+    float errSum = 0.0f;
+    int errCnt = 0;
+
+    unsigned long tStart = millis();
+    while (millis() - tStart < durationMs) {
+      if (!servoEnabled) { abortCode = 1.0f; break; }
+      float dt = stepEnc();
+
+      if (fabsf(currentDeg - centerDeg) > 120.0f) {
+        snprintf(pidStatusMsg, sizeof(pidStatusMsg), "ABORTED: Runaway (>120 deg)! Flip Encoder Polarity.");
+        abortCode = 2.0f;
+        break;
+      }
+
+      runAngleLockStep(dt, false);
+
+      unsigned long elap = millis() - tStart;
+      if (!reached90 && stepSpan > 3.0f && fabsf(destDeg - currentDeg) <= stepSpan * 0.10f) {
+        m.riseMs = (int)elap;
+        reached90 = true;
+      }
+
+      float past = (currentDeg - destDeg) * stepDir;
+      if (past > m.maxOvershoot) m.maxOvershoot = past;
+
+      float lag = fabsf(profPos - currentDeg);
+      if (lag > m.maxTrackLag) m.maxTrackLag = lag;
+
+      if (elap > 250) {
+        int s = (currentPWM > 22) ? 1 : (currentPWM < -22) ? -1 : 0;
+        if (s != 0 && lastSign != 0 && s != lastSign) m.pwmFlips++;
+        if (s != 0) lastSign = s;
+      }
+      if (elap > durationMs - 450) {
+        errSum += fabsf(destDeg - currentDeg);
+        errCnt++;
+      }
+      vTaskDelay(1);
+    }
+    m.steadyErr = (errCnt > 0) ? (errSum / errCnt) : 0.0f;
+    return m;
+  };
+
+  // ---------- STAGE 1/7: CW & CCW BREAKAWAY FRICTION (~3.5s) ----------
+  snprintf(pidStatusMsg, sizeof(pidStatusMsg), "[1/7] Measuring CW & CCW breakaway friction...");
+  tuneProgress = 8;
+
+  int foundCW = 40, foundCCW = 40;
+  float sA = currentDeg;
+  for (int p = 14; p <= min(maxPWM, 130); p += 3) {
+    if (!servoEnabled) { abortCode = 1.0f; break; }
+    writeMotorRaw(p);
+    unsigned long tW = millis();
+    while (millis() - tW < 22) { stepEnc(); vTaskDelay(1); }
+    if (fabsf(currentDeg - sA) > 0.35f) { foundCW = p; break; }
+  }
+  writeMotorRaw(0);
+  vTaskDelay(160 / portTICK_PERIOD_MS);
+
+  sA = currentDeg;
+  for (int p = 14; p <= min(maxPWM, 130); p += 3) {
+    if (abortCode != 0.0f || !servoEnabled) { abortCode = 1.0f; break; }
+    writeMotorRaw(-p);
+    unsigned long tW = millis();
+    while (millis() - tW < 22) { stepEnc(); vTaskDelay(1); }
+    if (fabsf(currentDeg - sA) > 0.35f) { foundCCW = p; break; }
+  }
+  writeMotorRaw(0);
+  vTaskDelay(160 / portTICK_PERIOD_MS);
+
+  if (abortCode != 0.0f) {
+    snprintf(pidStatusMsg, sizeof(pidStatusMsg), "Auto-Tune Stopped by E-STOP.");
+    resetControllers(true); isAutoTuning = false; tuneProgress = 0; return;
+  }
+
+  minPWM_CW  = constrain((int)(foundCW  * 0.78f), 16, 95);
+  minPWM_CCW = constrain((int)(foundCCW * 0.78f), 16, 95);
+
+  // ---------- STAGE 2/7: GEARBOX BACKLASH CHECK (~2.5s) ----------
+  snprintf(pidStatusMsg, sizeof(pidStatusMsg), "[2/7] Measuring 56:1 gearbox backlash...");
+  tuneProgress = 18;
+
+  int gentlePWM = constrain(max(foundCW, foundCCW) + 28, 65, 135);
+  unsigned long t0 = millis();
+  while (millis() - t0 < 300 && abortCode == 0.0f) {
+    if (!servoEnabled) { abortCode = 1.0f; break; }
+    stepEnc(); writeMotorRaw(gentlePWM); vTaskDelay(1);
+  }
+  writeMotorRaw(0);
+  vTaskDelay(140 / portTICK_PERIOD_MS);
+
+  float revStart = currentDeg;
+  float backlashEst = 0.4f;
+  t0 = millis();
+  while (millis() - t0 < 400 && abortCode == 0.0f) {
+    if (!servoEnabled) { abortCode = 1.0f; break; }
+    stepEnc(); writeMotorRaw(-gentlePWM);
+    if (fabsf(currentVel) > 12.0f) {
+      backlashEst = fabsf(currentDeg - revStart);
+      break;
+    }
+    vTaskDelay(1);
+  }
+  writeMotorRaw(0);
+  vTaskDelay(140 / portTICK_PERIOD_MS);
+
+  tolerance = constrain(max(0.35f, backlashEst * 0.55f), 0.35f, 1.0f);
+
+  // ---------- STAGE 3/7: MULTI-SPEED Kff & MAX ACCEL MAP (~4.5s) ----------
+  snprintf(pidStatusMsg, sizeof(pidStatusMsg), "[3/7] Mapping speed curve (Kff), accel & inertia...");
+  tuneProgress = 30;
+
+  int pLow  = constrain(max(foundCW, foundCCW) + 55, 100, min(maxPWM, 155));
+  int pHigh = constrain(max(foundCW, foundCCW) + 125, 165, min(maxPWM, 235));
+  if (pHigh <= pLow + 20) pHigh = min(maxPWM, pLow + 35);
+
+  float vLow = 0.0f, vHigh = 0.0f, coastDeg = 0.0f;
+
+  t0 = millis();
+  while (millis() - t0 < 700 && abortCode == 0.0f) {
+    if (!servoEnabled) { abortCode = 1.0f; break; }
+    float dt = stepEnc();
+    writeMotorSmooth((float)pLow, dt);
+    if (millis() - t0 > 350) vLow = 0.85f * vLow + 0.15f * fabsf(currentVel);
+    vTaskDelay(1);
+  }
+  writeMotorRaw(0);
+  vTaskDelay(160 / portTICK_PERIOD_MS);
+
+  t0 = millis();
+  while (millis() - t0 < 700 && abortCode == 0.0f) {
+    if (!servoEnabled) { abortCode = 1.0f; break; }
+    float dt = stepEnc();
+    writeMotorSmooth((float)(-pHigh), dt);
+    if (millis() - t0 > 350) vHigh = 0.85f * vHigh + 0.15f * fabsf(currentVel);
+    vTaskDelay(1);
+  }
+  float coastStart = currentDeg;
+  writeMotorRaw(0);
+  t0 = millis();
+  while (millis() - t0 < 280) { stepEnc(); vTaskDelay(1); }
+  coastDeg = fabsf(currentDeg - coastStart);
+
+  if (abortCode != 0.0f || vHigh < 5.0f) {
+    snprintf(pidStatusMsg, sizeof(pidStatusMsg),
+             (abortCode == 1.0f) ? "Auto-Tune Stopped by E-STOP." : "FAULT: Motor too slow. Check power & polarity.");
+    resetControllers(true); isAutoTuning = false; tuneProgress = 0; return;
+  }
+
+  float dVel      = max(vHigh - vLow, 5.0f);
+  float dPwm      = (float)(pHigh - pLow);
+  float plantGain = vHigh / (float)pHigh; // (deg/s) per PWM
+
+  // Snappy, high-response starting parameters scaled for 56:1
+  Kff         = constrain((dPwm / dVel) * 0.88f, 0.10f, 3.0f);
+  Kp          = constrain(2.20f / max(plantGain, 0.08f), 2.5f, 22.0f);
+  Ki          = constrain(Kp * 0.04f, 0.04f, 1.2f);
+  Kd          = constrain((0.14f + coastDeg * 0.03f) / max(plantGain, 0.08f), 0.04f, 1.2f);
+  velKp       = constrain(0.65f / max(plantGain, 0.08f), 0.5f, 10.0f);
+  velKi       = constrain(velKp * 1.45f, 0.4f, 16.0f);
+  maxVelocity = constrain(vHigh * 1.15f, 120.0f, 600.0f);
+  maxAccel    = constrain(vHigh * 4.8f, 350.0f, 1400.0f);
+  pwmSlew     = constrain((int)(28.0f - coastDeg * 0.8f), 14, 32);
+
+  centerDeg = currentDeg;
+
+  // ---------- STAGE 4/7: CRISP MICRO-STEP TEST (~5.5s) ----------
+  float microTargets[3] = { centerDeg + 10.0f, centerDeg - 10.0f, centerDeg };
+  for (int i = 0; i < 3 && abortCode == 0.0f; i++) {
+    snprintf(pidStatusMsg, sizeof(pidStatusMsg),
+             "[4/7] Crisp Micro-Step %d/3 (P:%.1f D:%.2f)...", i + 1, Kp, Kd);
+    tuneProgress = 42 + i * 5;
+    StepMetrics m = runStepTest(microTargets[i], 1700);
+    if (abortCode != 0.0f) break;
+
+    if (m.pwmFlips >= 3) {
+      Kp *= 0.85f; Kd *= 1.22f; pwmSlew = max(pwmSlew - 2, 10);
+    } else if (m.maxOvershoot > 1.2f) {
+      Kd *= 1.22f;
+    } else if (m.steadyErr > tolerance * 1.25f || m.riseMs > 380) {
+      Kp *= 1.18f; Ki *= 1.25f;
+    }
+    Kp = constrain(Kp, 2.0f, 28.0f);
+    Ki = constrain(Ki, 0.03f, 2.5f);
+    Kd = constrain(Kd, 0.03f, 2.0f);
+  }
+
+  // ---------- STAGE 5/7: FAST LARGE-STEP REVERSALS (~6.5s) ----------
+  float largeTargets[3] = { centerDeg + 60.0f, centerDeg - 60.0f, centerDeg };
+  int lastRiseMs = 0;
+  for (int i = 0; i < 3 && abortCode == 0.0f; i++) {
+    snprintf(pidStatusMsg, sizeof(pidStatusMsg),
+             "[5/7] Fast Reversal %d/3 (FF:%.2f Acc:%.0f)...", i + 1, Kff, maxAccel);
+    tuneProgress = 58 + i * 7;
+    StepMetrics m = runStepTest(largeTargets[i], 2000);
+    lastRiseMs = m.riseMs;
+    if (abortCode != 0.0f) break;
+
+    if (m.pwmFlips >= 3) {
+      Kp *= 0.84f; Kd *= 1.25f; pwmSlew = max(pwmSlew - 2, 10);
+    } else if (m.maxOvershoot > 1.8f) {
+      Kff *= 0.92f; Kd *= 1.25f; maxAccel = max(maxAccel * 0.90f, 250.0f);
+    } else if (m.maxTrackLag > 4.5f) {
+      Kff *= 1.12f; Kp *= 1.12f;
+    } else {
+      // Clean fast step -> push response slightly snappier
+      Kp *= 1.06f; maxAccel = min(maxAccel * 1.08f, 1500.0f);
+    }
+    Kff = constrain(Kff, 0.10f, 3.5f);
+    Kp  = constrain(Kp, 2.0f, 30.0f);
+    Ki  = constrain(Ki, 0.03f, 2.5f);
+    Kd  = constrain(Kd, 0.03f, 2.2f);
+  }
+
+  // ---------- STAGE 6/7: SPEED-MODE PID VERIFICATION (~3.5s) ----------
+  if (abortCode == 0.0f) {
+    snprintf(pidStatusMsg, sizeof(pidStatusMsg), "[6/7] Refining Speed PID (+90 / -90 deg/s)...");
+    tuneProgress = 82;
+
+    float testSpeeds[2] = { 90.0f, -90.0f };
+    for (int s = 0; s < 2 && abortCode == 0.0f; s++) {
+      float tV = testSpeeds[s];
+      velIntegral = 0.0f;
+      float vErrSum = 0.0f;
+      int vCnt = 0;
+      t0 = millis();
+      while (millis() - t0 < 1300) {
+        if (!servoEnabled) { abortCode = 1.0f; break; }
+        float dt = stepEnc();
+        float vErr = tV - currentVel;
+        velIntegral = constrain(velIntegral + vErr * dt, -255.0f, 255.0f);
+        float out = (Kff * tV) + (velKp * vErr) + (velKi * velIntegral);
+        float minP = (out >= 0.0f) ? (float)minPWM_CW : (float)minPWM_CCW;
+        float cmdMag = constrain(fabsf(out) + minP * 0.45f, 0.0f, (float)maxPWM);
+        writeMotorSmooth((out >= 0.0f) ? cmdMag : -cmdMag, dt);
+
+        if (millis() - t0 > 500) { vErrSum += fabsf(vErr); vCnt++; }
+        vTaskDelay(1);
+      }
+      if (vCnt > 0 && (vErrSum / vCnt) > 10.0f) {
+        velKp = constrain(velKp * 1.18f, 0.4f, 12.0f);
+        velKi = constrain(velKi * 1.22f, 0.3f, 18.0f);
+      }
+      writeMotorRaw(0);
+      vTaskDelay(150 / portTICK_PERIOD_MS);
+      tuneProgress = 86 + s * 4;
+    }
+  }
+
+  // ---------- STAGE 7/7: HARD 0-PWM IDLE LOCK CHECK (~2.5s) ----------
+  if (abortCode == 0.0f) {
+    snprintf(pidStatusMsg, sizeof(pidStatusMsg), "[7/7] Verifying Silent 0-PWM Idle Lock...");
+    tuneProgress = 94;
+
+    targetDeg        = centerDeg;
+    lastTargetDeg    = centerDeg;
+    isPositionLocked = false;
+    settleStartMs    = 0;
+    profPos          = currentDeg;
+    profVel          = 0.0f;
+
+    int nonZeroIdleCount = 0;
+    t0 = millis();
+    while (millis() - t0 < 2300) {
+      if (!servoEnabled) { abortCode = 1.0f; break; }
+      float dt = stepEnc();
+      runAngleLockStep(dt, false);
+      if (millis() - t0 > 1300 && currentPWM != 0) nonZeroIdleCount++;
+      vTaskDelay(1);
+    }
+
+    if (abortCode == 0.0f) {
+      if (nonZeroIdleCount > 40) {
+        tolerance = constrain(tolerance + 0.15f, 0.4f, 1.2f);
+        Kp *= 0.92f;
+      }
+      saveSettingsToNVS();
+      tuneProgress = 100;
+      snprintf(pidStatusMsg, sizeof(pidStatusMsg),
+               "FAST 30s TUNE OK! P:%.1f I:%.2f D:%.2f FF:%.2f | Rise:%dms | 0-PWM Lock",
+               Kp, Ki, Kd, Kff, lastRiseMs);
+    }
+  }
+
+  if (abortCode == 1.0f) {
+    snprintf(pidStatusMsg, sizeof(pidStatusMsg), "Auto-Tune Stopped by E-STOP.");
+    tuneProgress = 0;
+  }
+
+  // Strictly 0 PWM & locked at current position when finished
+  targetDeg = currentDeg;
+  resetControllers(true);
+  isAutoTuning = false;
+}
+
+// ================= CORE 1 RTOS CONTROL TASK (~1 kHz, 400 kHz I2C) =================
 void controlLoopTask(void * pvParameters) {
   lastLoopTime = micros();
   unsigned long hzTimer = millis();
@@ -314,9 +833,16 @@ void controlLoopTask(void * pvParameters) {
       continue;
     }
 
+    if (reqAutoPid) {
+      reqAutoPid = false;
+      runAutoPidTune();
+      lastLoopTime = micros();
+      continue;
+    }
+
     unsigned long now = micros();
     float dt = (now - lastLoopTime) * 1e-6f;
-    if (dt <= 0.0f || dt > 0.1f) dt = 0.002f;
+    if (dt <= 0.0f || dt > 0.1f) dt = 0.001f;
     lastLoopTime = now;
 
     hzCounter++;
@@ -329,44 +855,23 @@ void controlLoopTask(void * pvParameters) {
     updateEncoder(dt);
 
     if (!servoEnabled || isStalled || !encHealthy || g_mode == MODE_IDLE) {
-      writeMotorRaw(0);
+      if (currentPWM != 0 || slewedPWM != 0.0f) writeMotorRaw(0);
       integral = 0.0f;
       velIntegral = 0.0f;
-      currentProfiledTarget = currentDeg;
-      vTaskDelay(2);
+      profPos = currentDeg;
+      profVel = 0.0f;
+      vTaskDelay(1);
       continue;
     }
 
     if (g_mode == MODE_MANUAL) {
-      writeMotorRaw(manualPWM);
-      currentProfiledTarget = currentDeg;
+      if (manualPWM == 0) writeMotorRaw(0);
+      else writeMotorSmooth((float)manualPWM, dt);
+      profPos = currentDeg;
+      profVel = 0.0f;
     }
     else if (g_mode == MODE_ANGLE) {
-      float maxChange = maxVelocity * dt;
-      if (targetDeg > currentProfiledTarget + maxChange)      currentProfiledTarget += maxChange;
-      else if (targetDeg < currentProfiledTarget - maxChange) currentProfiledTarget -= maxChange;
-      else                                                    currentProfiledTarget = targetDeg;
-
-      float error = currentProfiledTarget - currentDeg;
-
-      if (fabsf(error) < 35.0f) {
-        integral = constrain(integral + error * dt, -150.0f, 150.0f);
-      } else {
-        integral = 0.0f;
-      }
-
-      float deriv = (error - lastError) / dt;
-      float out = (Kp * error) + (Ki * integral) + (Kd * deriv);
-      lastError = error;
-
-      if (stallEnable && fabsf(out) >= (maxPWM - 5) && fabsf(currentVel) < 1.0f) {
-        if (stallStartTime == 0) stallStartTime = millis();
-        else if (millis() - stallStartTime > (unsigned long)stallMs) isStalled = true;
-      } else {
-        stallStartTime = 0;
-      }
-
-      drivePIDOutput(out, true);
+      runAngleLockStep(dt, true);
     }
     else if (g_mode == MODE_SPEED) {
       if (fabsf(targetVel) < 0.5f) {
@@ -375,34 +880,40 @@ void controlLoopTask(void * pvParameters) {
       } else {
         float vErr = targetVel - currentVel;
         velIntegral = constrain(velIntegral + vErr * dt, -255.0f, 255.0f);
-        float out = (velKp * vErr) + (velKi * velIntegral);
-        drivePIDOutput(out, false);
+        float out = (Kff * targetVel) + (velKp * vErr) + (velKi * velIntegral);
+        float minP = (out >= 0.0f) ? (float)minPWM_CW : (float)minPWM_CCW;
+        float cmdMag = constrain(fabsf(out) + minP * 0.45f, 0.0f, (float)maxPWM);
+        writeMotorSmooth((out >= 0.0f) ? cmdMag : -cmdMag, dt);
       }
-      currentProfiledTarget = currentDeg;
+      profPos = currentDeg;
+      profVel = currentVel;
     }
 
-    vTaskDelay(2); // ~500 Hz, stable for 100 kHz I2C & Wi-Fi
+    vTaskDelay(1);
   }
 }
 
 // ================= NVS LOAD / SAVE =================
 void loadSettings() {
-  prefs.begin("servo-v4i2c", false);
+  prefs.begin("servo-v53i2c", false);
   homeOffset  = prefs.getLong("offset", 0);
-  Kp          = prefs.getFloat("kp", 5.0f);
-  Ki          = prefs.getFloat("ki", 0.08f);
-  Kd          = prefs.getFloat("kd", 0.08f);
-  velKp       = prefs.getFloat("vKp", 1.2f);
-  velKi       = prefs.getFloat("vKi", 2.0f);
-  tolerance   = prefs.getFloat("tol", 0.5f);
+  Kp          = prefs.getFloat("kp", DEF_KP);
+  Ki          = prefs.getFloat("ki", DEF_KI);
+  Kd          = prefs.getFloat("kd", DEF_KD);
+  Kff         = prefs.getFloat("kff", DEF_KFF);
+  velKp       = prefs.getFloat("vKp", DEF_VEL_KP);
+  velKi       = prefs.getFloat("vKi", DEF_VEL_KI);
+  tolerance   = prefs.getFloat("tol", DEF_TOL);
   maxDeg      = prefs.getFloat("maxDeg", 360.0f);
-  gearRatio   = prefs.getFloat("ratio", 220.0f);
-  maxVelocity = prefs.getFloat("vel", 180.0f);
-  velAlpha    = prefs.getFloat("alpha", 0.20f);
+  gearRatio   = prefs.getFloat("ratio", DEF_GEAR_RATIO);
+  maxVelocity = prefs.getFloat("vel", DEF_MAX_VEL);
+  maxAccel    = prefs.getFloat("acc", DEF_ACCEL);
+  velAlpha    = prefs.getFloat("alpha", DEF_ALPHA);
   pwmFreq     = prefs.getInt("freq", 7000);
   maxPWM      = prefs.getInt("maxpwm", 255);
-  minPWM_CW   = prefs.getInt("minCW", 45);
-  minPWM_CCW  = prefs.getInt("minCCW", 45);
+  minPWM_CW   = prefs.getInt("minCW", 40);
+  minPWM_CCW  = prefs.getInt("minCCW", 40);
+  pwmSlew     = prefs.getInt("slew", DEF_SLEW);
   encDir      = prefs.getInt("dir", 1);
   spikeLimit  = prefs.getInt("spike", 1600);
   stallEnable = prefs.getBool("stEn", false);
@@ -411,12 +922,13 @@ void loadSettings() {
 
 void saveSettingsToNVS() {
   prefs.putFloat("kp", Kp); prefs.putFloat("ki", Ki); prefs.putFloat("kd", Kd);
-  prefs.putFloat("vKp", velKp); prefs.putFloat("vKi", velKi);
+  prefs.putFloat("kff", Kff); prefs.putFloat("vKp", velKp); prefs.putFloat("vKi", velKi);
   prefs.putFloat("tol", tolerance); prefs.putFloat("maxDeg", maxDeg);
   prefs.putFloat("ratio", gearRatio); prefs.putFloat("vel", maxVelocity);
-  prefs.putFloat("alpha", velAlpha); prefs.putInt("freq", pwmFreq);
-  prefs.putInt("maxpwm", maxPWM); prefs.putInt("minCW", minPWM_CW);
-  prefs.putInt("minCCW", minPWM_CCW); prefs.putInt("dir", encDir);
+  prefs.putFloat("acc", maxAccel); prefs.putFloat("alpha", velAlpha);
+  prefs.putInt("freq", pwmFreq); prefs.putInt("maxpwm", maxPWM);
+  prefs.putInt("minCW", minPWM_CW); prefs.putInt("minCCW", minPWM_CCW);
+  prefs.putInt("slew", pwmSlew); prefs.putInt("dir", encDir);
   prefs.putInt("spike", spikeLimit);
   prefs.putBool("stEn", stallEnable); prefs.putInt("stMs", stallMs);
 }
@@ -428,7 +940,7 @@ const char index_html[] PROGMEM = R"rawliteral(
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>SmartServo V4 Pro (I2C)</title>
+<title>SmartServo V5.3 (56:1 Fast)</title>
 <style>
   :root{--bg:#0b0f17;--card:#141b29;--bdr:#24324c;--txt:#e6edf7;--mut:#8b9bb4;--acc:#38bdf8;--ok:#22c55e;--warn:#f59e0b;--err:#ef4444;}
   *{box-sizing:border-box;font-family:system-ui,-apple-system,sans-serif;}
@@ -447,7 +959,7 @@ const char index_html[] PROGMEM = R"rawliteral(
   .panel{display:none;}
   .panel.active{display:grid;gap:10px;}
   .row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:7px 0;flex-wrap:wrap;font-size:.88rem;}
-  .row label{color:var(--mut);min-width:125px;}
+  .row label{color:var(--mut);min-width:140px;}
   input[type=range]{flex:1;min-width:120px;accent-color:var(--acc);}
   input[type=number]{width:86px;padding:6px 8px;border-radius:6px;border:1px solid var(--bdr);background:#090e18;color:var(--txt);font-weight:700;text-align:center;}
   .btn{padding:8px 12px;border-radius:8px;border:1px solid var(--bdr);background:#1e293b;color:var(--txt);font-weight:700;cursor:pointer;font-size:.82rem;}
@@ -458,8 +970,8 @@ const char index_html[] PROGMEM = R"rawliteral(
   .btn.err{background:var(--err);color:#fff;border-color:var(--err);}
   .alert{background:var(--err);color:#fff;padding:10px 12px;border-radius:8px;font-weight:700;display:none;justify-content:space-between;align-items:center;}
   canvas{width:100%;height:175px;background:#070a10;border-radius:8px;border:1px solid var(--bdr);display:block;}
-  .bar-bg{width:100%;height:14px;background:#090e18;border-radius:7px;overflow:hidden;border:1px solid var(--bdr);}
-  .bar-fill{height:100%;background:linear-gradient(90deg,#38bdf8,#22c55e);width:0%;}
+  .bar-bg{width:100%;height:14px;background:#090e18;border-radius:7px;overflow:hidden;border:1px solid var(--bdr);margin:6px 0;}
+  .bar-fill{height:100%;background:linear-gradient(90deg,#38bdf8,#22c55e);width:0%;transition:width .2s;}
   .calbox{background:#090e18;border:1px solid var(--bdr);padding:10px;border-radius:8px;font-family:monospace;font-size:.82rem;color:#38bdf8;}
 </style>
 </head>
@@ -467,10 +979,10 @@ const char index_html[] PROGMEM = R"rawliteral(
 <div class="wrap">
   <div class="top">
     <div>
-      <h2>SmartServo V4 Pro (I2C 100kHz)</h2>
+      <h2>SmartServo V5.3 (56:1 Fast @ 400kHz)</h2>
       <span id="encBadge" class="badge">I2C: OK</span>
       <span id="hzBadge" class="badge">Loop: -- Hz</span>
-      <span id="modeBadge" class="badge">Mode: ANGLE</span>
+      <span id="lockBadge" class="badge">LOCKED (0 PWM)</span>
     </div>
     <div style="display:flex;gap:6px;">
       <button class="btn ok" onclick="cmd({zero:1})">Set Zero</button>
@@ -500,7 +1012,7 @@ const char index_html[] PROGMEM = R"rawliteral(
 
   <div class="nav">
     <button class="ntab active" onclick="showTab(0,this)">Control</button>
-    <button class="ntab" onclick="showTab(1,this)">PID & Motion</button>
+    <button class="ntab" onclick="showTab(1,this)">PID & Auto-Tune</button>
     <button class="ntab" onclick="showTab(2,this)">Calibration</button>
     <button class="ntab" onclick="showTab(3,this)">Hardware</button>
   </div>
@@ -535,15 +1047,15 @@ const char index_html[] PROGMEM = R"rawliteral(
       <div id="boxSpeed" style="display:none;margin-top:12px;">
         <div class="row">
           <label>Target Speed (°/s)</label>
-          <input type="range" id="sSpd" min="-200" max="200" step="5" value="0" oninput="nSpd.value=this.value;cmd({tVel:this.value})">
+          <input type="range" id="sSpd" min="-250" max="250" step="5" value="0" oninput="nSpd.value=this.value;cmd({tVel:this.value})">
           <input type="number" id="nSpd" value="0" step="5" onchange="sSpd.value=this.value;cmd({tVel:this.value})">
         </div>
         <div class="row" style="justify-content:center;">
-          <button class="btn" onclick="setSpd(-90)">-90°/s</button>
-          <button class="btn" onclick="setSpd(-30)">-30°/s</button>
+          <button class="btn" onclick="setSpd(-120)">-120°/s</button>
+          <button class="btn" onclick="setSpd(-45)">-45°/s</button>
           <button class="btn pri" onclick="setSpd(0)">STOP</button>
-          <button class="btn" onclick="setSpd(30)">+30°/s</button>
-          <button class="btn" onclick="setSpd(90)">+90°/s</button>
+          <button class="btn" onclick="setSpd(45)">+45°/s</button>
+          <button class="btn" onclick="setSpd(120)">+120°/s</button>
         </div>
       </div>
 
@@ -562,8 +1074,8 @@ const char index_html[] PROGMEM = R"rawliteral(
 
       <div class="row" style="margin-top:12px;">
         <label>Speed Limit (°/s)</label>
-        <input type="range" id="sVelLim" min="10" max="500" step="5" value="180" oninput="nVelLim.value=this.value;cmd({vel:this.value})">
-        <input type="number" id="nVelLim" value="180" step="5" onchange="sVelLim.value=this.value;cmd({vel:this.value})">
+        <input type="range" id="sVelLim" min="20" max="600" step="10" value="360" oninput="nVelLim.value=this.value;cmd({vel:this.value})">
+        <input type="number" id="nVelLim" value="360" step="10" onchange="sVelLim.value=this.value;cmd({vel:this.value})">
       </div>
       <div class="row">
         <label>Max PWM (Torque)</label>
@@ -573,18 +1085,30 @@ const char index_html[] PROGMEM = R"rawliteral(
     </div>
   </div>
 
-  <!-- TAB 1: PID & MOTION -->
+  <!-- TAB 1: PID & AUTO-TUNE -->
   <div class="panel" id="tab1">
     <div class="card">
-      <div class="lbl" style="margin-bottom:8px;">Angle Lock PID</div>
+      <div class="lbl" style="margin-bottom:6px;">7-Stage Fast Auto-PID (~30s: Friction + Backlash + Kff + Crisp Steps + Speed + 0-PWM Lock)</div>
+      <div class="calbox" id="pidMsg">Ready</div>
+      <div class="bar-bg"><div class="bar-fill" id="tuneBar"></div></div>
+      <div style="display:flex;gap:8px;margin:10px 0 14px;">
+        <button class="btn warn" style="flex:2;padding:11px;" onclick="runAutoPid()">START 30s FAST AUTO-PID</button>
+        <button class="btn err" style="flex:1;padding:11px;" onclick="resetPidDef()">RESET PID DEFAULT</button>
+      </div>
+
+      <div class="lbl" style="margin-bottom:8px;">Angle Lock PID + Feedforward</div>
       <div class="row"><label>Pos Kp (Stiffness)</label><input type="number" id="inKp" step="0.2"></div>
       <div class="row"><label>Pos Ki (Steady Lock)</label><input type="number" id="inKi" step="0.02"></div>
-      <div class="row"><label>Pos Kd (Damping)</label><input type="number" id="inKd" step="0.02"></div>
-      <div class="row"><label>Deadzone Tol (°)</label><input type="number" id="inTol" step="0.1"></div>
+      <div class="row"><label>Pos Kd (Vel Damping)</label><input type="number" id="inKd" step="0.02"></div>
+      <div class="row"><label>Feedforward Kff</label><input type="number" id="inKff" step="0.05"></div>
+      <div class="row"><label>Accel Limit (°/s²)</label><input type="number" id="inAcc" step="50" min="50" max="2000"></div>
+      <div class="row"><label>PWM Slew (Response)</label><input type="number" id="inSlew" min="4" max="60" step="2"></div>
+      <div class="row"><label>Deadzone Tol (°)</label><input type="number" id="inTol" step="0.05"></div>
+
       <div class="lbl" style="margin:12px 0 8px;">Speed Mode PID & Filtering</div>
       <div class="row"><label>Speed Kp</label><input type="number" id="inVKp" step="0.1"></div>
       <div class="row"><label>Speed Ki</label><input type="number" id="inVKi" step="0.1"></div>
-      <div class="row"><label>Vel Filter Alpha</label><input type="number" id="inAlpha" step="0.05" min="0.05" max="1"></div>
+      <div class="row"><label>Vel Filter Alpha</label><input type="number" id="inAlpha" step="0.02" min="0.05" max="1"></div>
       <button class="btn ok" style="width:100%;margin-top:8px;padding:11px;" onclick="saveAll()">APPLY & SAVE TO FLASH</button>
     </div>
   </div>
@@ -592,11 +1116,11 @@ const char index_html[] PROGMEM = R"rawliteral(
   <!-- TAB 2: CALIBRATION -->
   <div class="panel" id="tab2">
     <div class="card">
-      <div class="lbl" style="margin-bottom:8px;">Auto Calibration (CW/CCW H-Bridge Check + Polarity)</div>
+      <div class="lbl" style="margin-bottom:8px;">Auto Calibration (CW/CCW H-Bridge + Polarity + I2C EMI Check)</div>
       <div class="calbox" id="calMsg">Ready</div>
       <button class="btn warn" style="width:100%;margin:10px 0;padding:11px;" onclick="runAutoCal()">RUN AUTO CALIBRATION (SPINS CW & CCW)</button>
 
-      <div class="lbl" style="margin-top:10px;">Live AS5600 I2C (0x0E)</div>
+      <div class="lbl" style="margin-top:10px;">Live AS5600 I2C (0x0E @ 400kHz)</div>
       <div class="row"><span>Raw Angle: <b id="cRaw">0</b> / 4095</span><span>I2C Recoveries: <b id="cRec">0</b></span></div>
       <div class="bar-bg"><div class="bar-fill" id="cBar"></div></div>
 
@@ -618,7 +1142,7 @@ const char index_html[] PROGMEM = R"rawliteral(
   <!-- TAB 3: HARDWARE -->
   <div class="panel" id="tab3">
     <div class="card">
-      <div class="lbl" style="margin-bottom:8px;">Gearbox, Asymmetric Friction & PWM</div>
+      <div class="lbl" style="margin-bottom:8px;">Gearbox (Default 56:1), Friction & PWM</div>
       <div class="row"><label>Gear Ratio (1:X)</label><input type="number" id="inRatio" step="1"></div>
       <div class="row"><label>Slider Max Angle (±°)</label><input type="number" id="inMaxDeg" step="10"></div>
       <div class="row"><label>Min PWM CW (+)</label><input type="number" id="inMinCW" min="0" max="150"></div>
@@ -636,10 +1160,9 @@ const char index_html[] PROGMEM = R"rawliteral(
 </div>
 
 <script>
-let curMode=1, enabled=true, encDir=1;
-const histT=[], histA=[], MAX_PTS=120;
+let curMode=1, enabled=true, encDir=1, wasTuning=false;
+const histT=[], histA=[], MAX_PTS=140;
 const ctx=document.getElementById('chart').getContext('2d');
-const modeNames=['IDLE','ANGLE LOCK','SPEED PID','MANUAL PWM'];
 
 function cmd(o){ fetch('/cmd?'+new URLSearchParams(o).toString()).catch(()=>{}); }
 function showTab(idx,el){
@@ -653,7 +1176,6 @@ function syncModeUI(m){
   boxAngle.style.display=(m===1)?'block':'none';
   boxSpeed.style.display=(m===2)?'block':'none';
   boxManual.style.display=(m===3)?'block':'none';
-  modeBadge.textContent='Mode: '+modeNames[m];
 }
 function setMode(m){
   syncModeUI(m);
@@ -675,17 +1197,28 @@ function toggleDir(){
   cmd({dir:encDir});
 }
 function runAutoCal(){
-  if(confirm('Motor will spin CW then CCW for ~2 seconds to check both H-bridge directions & set polarity. Continue?')){
+  if(confirm('Motor will spin CW then CCW for ~2 seconds to check both H-bridge directions, polarity & I2C EMI. Continue?')){
     cmd({cal:1});
   }
 }
+function runAutoPid(){
+  if(confirm('Starts a 30-second 7-stage fast calibration (friction, backlash, Kff/accel, micro-steps, fast ±60° reversals, speed PID & 0-PWM lock). Ensure output shaft can move ±70° freely. Continue?')){
+    cmd({autotune:1});
+  }
+}
+function resetPidDef(){
+  if(confirm('Reset PID, Feedforward, Accel & Slew gains to fast 56:1 defaults?')){
+    fetch('/resetpid').then(()=>loadParams());
+  }
+}
 function factoryReset(){
-  if(confirm('Reset all settings to defaults?')) fetch('/factory').then(()=>location.reload());
+  if(confirm('Reset ALL settings (including 56:1 ratio & calibration) to defaults?')) fetch('/factory').then(()=>location.reload());
 }
 function saveAll(){
   const q=new URLSearchParams({
-    p:inKp.value, i:inKi.value, d:inKd.value, vP:inVKp.value, vI:inVKi.value,
-    tol:inTol.value, max:inMaxDeg.value, r:inRatio.value, vel:nVelLim.value,
+    p:inKp.value, i:inKi.value, d:inKd.value, ff:inKff.value, acc:inAcc.value,
+    vP:inVKp.value, vI:inVKi.value, tol:inTol.value, slew:inSlew.value,
+    max:inMaxDeg.value, r:inRatio.value, vel:nVelLim.value,
     maxpwm:nMaxPwm.value, minCW:inMinCW.value, minCCW:inMinCCW.value,
     dir:encDir, freq:inFreq.value, spike:inSpike.value,
     alpha:inAlpha.value, stallEn:inStallEn.checked?1:0, stallMs:inStallMs.value
@@ -721,8 +1254,9 @@ function drawChart(){
 
 function loadParams(){
   fetch('/getparams').then(r=>r.json()).then(d=>{
-    inKp.value=d.p; inKi.value=d.i; inKd.value=d.d; inVKp.value=d.vP; inVKi.value=d.vI;
-    inTol.value=d.tol; inMaxDeg.value=d.max; inRatio.value=d.r;
+    inKp.value=d.p; inKi.value=d.i; inKd.value=d.d; inKff.value=d.ff; inAcc.value=d.acc;
+    inVKp.value=d.vP; inVKi.value=d.vI; inTol.value=d.tol; inSlew.value=d.slew;
+    inMaxDeg.value=d.max; inRatio.value=d.r;
     sVelLim.value=d.vel; nVelLim.value=d.vel;
     sMaxPwm.value=d.maxpwm; nMaxPwm.value=d.maxpwm;
     inMinCW.value=d.minCW; inMinCCW.value=d.minCCW;
@@ -737,6 +1271,9 @@ loadParams();
 setInterval(()=>{
   fetch('/status').then(r=>r.json()).then(d=>{
     if(d.mode !== curMode) syncModeUI(d.mode);
+    if(wasTuning && !d.tuning) loadParams();
+    wasTuning = d.tuning;
+
     vPos.textContent=d.pos.toFixed(1)+'°';
     vTgt.textContent=(d.mode===2)?(d.tVel.toFixed(1)+'°/s'):(d.tgt.toFixed(1)+'°');
     vVel.textContent=d.vel.toFixed(1);
@@ -748,10 +1285,20 @@ setInterval(()=>{
     encBadge.textContent=d.ok?('I2C: OK (Rec '+d.rec+')'):'I2C FAULT!';
     encBadge.style.borderColor=d.ok?'#22c55e':'#ef4444';
 
+    if(d.mode===1){
+      lockBadge.textContent=d.locked?'LOCKED (0 PWM)':'MOVING / HOLDING';
+      lockBadge.style.borderColor=d.locked?'#22c55e':'#38bdf8';
+    } else {
+      lockBadge.textContent=(d.mode===0)?'IDLE':(d.mode===2?'SPEED PID':'MANUAL PWM');
+      lockBadge.style.borderColor='#8b9bb4';
+    }
+
     cRaw.textContent=d.raw;
     cRec.textContent=d.rec;
     cBar.style.width=((d.raw/4095)*100).toFixed(1)+'%';
+    tuneBar.style.width=d.prog+'%';
     calMsg.textContent=d.calMsg;
+    pidMsg.textContent=d.pidMsg;
 
     const tVal=(d.mode===2)?d.tVel:d.tgt;
     const aVal=(d.mode===2)?d.vel:d.pos;
@@ -770,9 +1317,9 @@ void setup() {
   Serial.begin(115200);
   delay(400);
 
-  // Noise-immune 100 kHz I2C setup (0x0E only)
+  // 400 kHz Fast Mode I2C (0x0E only, clean STOP)
   Wire.begin(I2C_SDA, I2C_SCL);
-  Wire.setClock(100000);
+  Wire.setClock(400000);
   Wire.setTimeOut(5);
 
   loadSettings();
@@ -784,9 +1331,9 @@ void setup() {
   }
   updateEncoder(0.01f);
   targetDeg = currentDeg;
-  currentProfiledTarget = currentDeg;
+  resetControllers(true);
 
-  // Wi-Fi AP + STA (connects to 'iot' AND keeps 'SmartServo_V2' AP)
+  // Wi-Fi AP + STA
   WiFi.disconnect(true);
   delay(100);
   WiFi.mode(WIFI_AP_STA);
@@ -808,29 +1355,35 @@ void setup() {
   Serial.print("AP ('SmartServo_V2', pass 12345678) -> http://");
   Serial.println(WiFi.softAPIP());
 
-  // Start ~500 Hz Control Loop on Core 1
-  xTaskCreatePinnedToCore(controlLoopTask, "ServoV4_I2C", 4096, NULL, 1, &controlTaskHandle, 1);
+  // Start ~1 kHz Control Loop on Core 1
+  xTaskCreatePinnedToCore(controlLoopTask, "ServoV53_56", 6144, NULL, 1, &controlTaskHandle, 1);
 
-  // HTTP Routes
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *r){ r->send_P(200, "text/html", index_html); });
 
   server.on("/cmd", HTTP_GET, [](AsyncWebServerRequest *r){
-    if (r->hasParam("mode"))       { g_mode = (uint8_t)r->getParam("mode")->value().toInt(); resetControllers(); }
-    if (r->hasParam("tDeg"))       targetDeg = r->getParam("tDeg")->value().toFloat();
+    if (r->hasParam("mode"))       { g_mode = (uint8_t)r->getParam("mode")->value().toInt(); resetControllers(g_mode == MODE_ANGLE); }
+    if (r->hasParam("tDeg"))       { targetDeg = r->getParam("tDeg")->value().toFloat(); isPositionLocked = false; settleStartMs = 0; }
     if (r->hasParam("tVel"))       targetVel = r->getParam("tVel")->value().toFloat();
     if (r->hasParam("mPwm"))       manualPWM = constrain(r->getParam("mPwm")->value().toInt(), -255, 255);
-    if (r->hasParam("vel"))        maxVelocity = constrain(r->getParam("vel")->value().toFloat(), 5.0f, 1000.0f);
+    if (r->hasParam("vel"))        maxVelocity = constrain(r->getParam("vel")->value().toFloat(), 10.0f, 1000.0f);
     if (r->hasParam("maxpwm"))     maxPWM = constrain(r->getParam("maxpwm")->value().toInt(), 60, 255);
-    if (r->hasParam("en"))         { servoEnabled = (r->getParam("en")->value().toInt() == 1); if (servoEnabled) resetControllers(); }
-    if (r->hasParam("dir"))        { encDir = (r->getParam("dir")->value().toInt() >= 0) ? 1 : -1; resetControllers(); }
-    if (r->hasParam("resetstall")) resetControllers();
+    if (r->hasParam("en"))         { servoEnabled = (r->getParam("en")->value().toInt() == 1); if (servoEnabled) resetControllers(true); }
+    if (r->hasParam("dir"))        { encDir = (r->getParam("dir")->value().toInt() >= 0) ? 1 : -1; resetControllers(true); }
+    if (r->hasParam("resetstall")) resetControllers(true);
     if (r->hasParam("cal"))        reqAutoCal = true;
+    if (r->hasParam("autotune"))   reqAutoPid = true;
     if (r->hasParam("recI2C"))     reqI2CRecover = true;
     if (r->hasParam("zero")) {
       homeOffset = totalTicks;
-      targetDeg = 0; currentProfiledTarget = 0; currentDeg = 0; prevDeg = 0;
+      targetDeg = 0; currentDeg = 0; prevDeg = 0;
+      resetControllers(true);
       prefs.putLong("offset", homeOffset);
     }
+    r->send(200, "text/plain", "OK");
+  });
+
+  server.on("/resetpid", HTTP_GET, [](AsyncWebServerRequest *r){
+    resetPidDefaults();
     r->send(200, "text/plain", "OK");
   });
 
@@ -838,9 +1391,12 @@ void setup() {
     if (r->hasParam("p"))       Kp          = r->getParam("p")->value().toFloat();
     if (r->hasParam("i"))       Ki          = r->getParam("i")->value().toFloat();
     if (r->hasParam("d"))       Kd          = r->getParam("d")->value().toFloat();
+    if (r->hasParam("ff"))      Kff         = r->getParam("ff")->value().toFloat();
+    if (r->hasParam("acc"))     maxAccel    = constrain(r->getParam("acc")->value().toFloat(), 50.0f, 2000.0f);
     if (r->hasParam("vP"))      velKp       = r->getParam("vP")->value().toFloat();
     if (r->hasParam("vI"))      velKi       = r->getParam("vI")->value().toFloat();
     if (r->hasParam("tol"))     tolerance   = r->getParam("tol")->value().toFloat();
+    if (r->hasParam("slew"))    pwmSlew     = constrain(r->getParam("slew")->value().toInt(), 4, 60);
     if (r->hasParam("max"))     maxDeg      = r->getParam("max")->value().toFloat();
     if (r->hasParam("r"))       gearRatio   = r->getParam("r")->value().toFloat();
     if (r->hasParam("vel"))     maxVelocity = r->getParam("vel")->value().toFloat();
@@ -857,7 +1413,7 @@ void setup() {
       if (newFreq != pwmFreq) setupPWM(newFreq);
     }
     saveSettingsToNVS();
-    resetControllers();
+    resetControllers(true);
     r->send(200, "text/plain", "OK");
   });
 
@@ -865,31 +1421,34 @@ void setup() {
     prefs.clear();
     loadSettings();
     setupPWM(pwmFreq);
-    resetControllers();
+    resetControllers(true);
     r->send(200, "text/plain", "OK");
   });
 
   server.on("/getparams", HTTP_GET, [](AsyncWebServerRequest *r){
-    char json[384];
+    char json[512];
     snprintf(json, sizeof(json),
-             "{\"p\":%.3f,\"i\":%.3f,\"d\":%.3f,\"vP\":%.2f,\"vI\":%.2f,\"tol\":%.2f,"
-             "\"max\":%.1f,\"r\":%.1f,\"vel\":%.1f,\"maxpwm\":%d,\"minCW\":%d,\"minCCW\":%d,"
-             "\"dir\":%d,\"freq\":%d,\"spike\":%d,\"alpha\":%.2f,\"stallEn\":%s,\"stallMs\":%d}",
-             Kp, Ki, Kd, velKp, velKi, tolerance, maxDeg, gearRatio, maxVelocity, maxPWM,
-             minPWM_CW, minPWM_CCW, encDir, pwmFreq, spikeLimit, velAlpha,
+             "{\"p\":%.3f,\"i\":%.3f,\"d\":%.3f,\"ff\":%.3f,\"acc\":%.1f,\"vP\":%.2f,\"vI\":%.2f,"
+             "\"tol\":%.2f,\"slew\":%d,\"max\":%.1f,\"r\":%.1f,\"vel\":%.1f,\"maxpwm\":%d,"
+             "\"minCW\":%d,\"minCCW\":%d,\"dir\":%d,\"freq\":%d,\"spike\":%d,\"alpha\":%.2f,"
+             "\"stallEn\":%s,\"stallMs\":%d}",
+             Kp, Ki, Kd, Kff, maxAccel, velKp, velKi, tolerance, pwmSlew, maxDeg, gearRatio,
+             maxVelocity, maxPWM, minPWM_CW, minPWM_CCW, encDir, pwmFreq, spikeLimit, velAlpha,
              stallEnable ? "true" : "false", stallMs);
     r->send(200, "application/json", json);
   });
 
   server.on("/status", HTTP_GET, [](AsyncWebServerRequest *r){
-    char json[340];
+    char json[640];
     snprintf(json, sizeof(json),
              "{\"pos\":%.2f,\"tgt\":%.2f,\"tVel\":%.1f,\"vel\":%.1f,\"pwm\":%d,\"raw\":%d,"
-             "\"turns\":%.2f,\"mode\":%u,\"stall\":%s,\"hz\":%d,\"ok\":%s,\"rec\":%lu,\"calMsg\":\"%s\"}",
+             "\"turns\":%.2f,\"mode\":%u,\"stall\":%s,\"locked\":%s,\"hz\":%d,\"ok\":%s,\"rec\":%lu,"
+             "\"tuning\":%s,\"prog\":%d,\"calMsg\":\"%s\",\"pidMsg\":\"%s\"}",
              currentDeg, targetDeg, targetVel, currentVel, currentPWM, liveRaw,
              (float)(totalTicks - homeOffset) / 4096.0f, g_mode,
-             isStalled ? "true" : "false", loopHz,
-             encHealthy ? "true" : "false", (unsigned long)i2cRecoveries, calStatusMsg);
+             isStalled ? "true" : "false", isPositionLocked ? "true" : "false",
+             loopHz, encHealthy ? "true" : "false", (unsigned long)i2cRecoveries,
+             isAutoTuning ? "true" : "false", tuneProgress, calStatusMsg, pidStatusMsg);
     r->send(200, "application/json", json);
   });
 

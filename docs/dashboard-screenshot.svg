@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 800" font-family="system-ui,-apple-system,Segoe UI,sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 840" font-family="system-ui,-apple-system,Segoe UI,sans-serif">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="#0b0f17"/>
@@ -7,20 +7,20 @@
   </defs>
 
   <!-- Background -->
-  <rect width="1280" height="800" fill="url(#bg)"/>
+  <rect width="1280" height="840" fill="url(#bg)"/>
 
   <!-- ===== HEADER ===== -->
-  <text x="30" y="38" font-size="20" font-weight="800" fill="#e6edf7">SmartServo V4 Pro (I2C 100kHz)</text>
+  <text x="30" y="38" font-size="20" font-weight="800" fill="#e6edf7">SmartServo V5.3 (56:1 Fast @ 400kHz)</text>
   
   <!-- Badges -->
-  <rect x="30" y="50" width="90" height="24" rx="12" fill="#1e293b" stroke="#22c55e" stroke-width="1.5"/>
-  <text x="75" y="66" text-anchor="middle" font-size="10" font-weight="700" fill="#22c55e">I2C: OK</text>
+  <rect x="30" y="50" width="105" height="24" rx="12" fill="#1e293b" stroke="#22c55e" stroke-width="1.5"/>
+  <text x="82" y="66" text-anchor="middle" font-size="10" font-weight="700" fill="#22c55e">I2C: OK (Rec 0)</text>
   
-  <rect x="130" y="50" width="110" height="24" rx="12" fill="#1e293b" stroke="#24324c" stroke-width="1"/>
-  <text x="185" y="66" text-anchor="middle" font-size="10" font-weight="700" fill="#8b9bb4">Loop: 498 Hz</text>
+  <rect x="145" y="50" width="115" height="24" rx="12" fill="#1e293b" stroke="#24324c" stroke-width="1"/>
+  <text x="202" y="66" text-anchor="middle" font-size="10" font-weight="700" fill="#8b9bb4">Loop: 996 Hz</text>
   
-  <rect x="250" y="50" width="130" height="24" rx="12" fill="#1e293b" stroke="#24324c" stroke-width="1"/>
-  <text x="315" y="66" text-anchor="middle" font-size="10" font-weight="700" fill="#8b9bb4">Mode: ANGLE LOCK</text>
+  <rect x="270" y="50" width="145" height="24" rx="12" fill="#1e293b" stroke="#22c55e" stroke-width="1.5"/>
+  <text x="342" y="66" text-anchor="middle" font-size="10" font-weight="700" fill="#22c55e">⚡ LOCKED (0 PWM)</text>
 
   <!-- Set Zero / E-STOP buttons -->
   <rect x="1080" y="22" width="80" height="34" rx="8" fill="#22c55e"/>
@@ -32,7 +32,7 @@
   <!-- Card 1: Output Angle -->
   <rect x="30" y="90" width="290" height="80" rx="12" fill="#141b29" stroke="#24324c" stroke-width="1"/>
   <text x="50" y="115" font-size="10" font-weight="700" fill="#8b9bb4" letter-spacing="0.5">OUTPUT ANGLE</text>
-  <text x="50" y="150" font-size="30" font-weight="800" fill="#22c55e">45.2°</text>
+  <text x="50" y="150" font-size="30" font-weight="800" fill="#22c55e">90.0°</text>
 
   <!-- Card 2: Target -->
   <rect x="335" y="90" width="290" height="80" rx="12" fill="#141b29" stroke="#24324c" stroke-width="1"/>
@@ -42,111 +42,119 @@
   <!-- Card 3: Speed -->
   <rect x="640" y="90" width="290" height="80" rx="12" fill="#141b29" stroke="#24324c" stroke-width="1"/>
   <text x="660" y="115" font-size="10" font-weight="700" fill="#8b9bb4" letter-spacing="0.5">SPEED (°/S)</text>
-  <text x="660" y="150" font-size="30" font-weight="800" fill="#e6edf7">12.3</text>
+  <text x="660" y="150" font-size="30" font-weight="800" fill="#e6edf7">0.0</text>
 
   <!-- Card 4: PWM / Raw -->
   <rect x="945" y="90" width="305" height="80" rx="12" fill="#141b29" stroke="#24324c" stroke-width="1"/>
   <text x="965" y="115" font-size="10" font-weight="700" fill="#8b9bb4" letter-spacing="0.5">PWM / I2C RAW</text>
-  <text x="965" y="150" font-size="30" font-weight="800" fill="#e6edf7">87 / 2048</text>
+  <text x="965" y="150" font-size="30" font-weight="800" fill="#22c55e">0 <tspan fill="#8b9bb4" font-size="18">/ 2048 (0 PWM Silent)</tspan></text>
 
   <!-- ===== LIVE GRAPH CARD ===== -->
-  <rect x="30" y="185" width="1220" height="195" rx="12" fill="#141b29" stroke="#24324c" stroke-width="1"/>
+  <rect x="30" y="185" width="1220" height="185" rx="12" fill="#141b29" stroke="#24324c" stroke-width="1"/>
   <text x="50" y="210" font-size="11" fill="#8b9bb4">Live Graph (</text>
   <text x="128" y="210" font-size="11" font-weight="700" fill="#38bdf8">Target</text>
   <text x="166" y="210" font-size="11" fill="#8b9bb4"> vs </text>
   <text x="184" y="210" font-size="11" font-weight="700" fill="#22c55e">Actual</text>
-  <text x="222" y="210" font-size="11" fill="#8b9bb4">)</text>
-  <text x="1200" y="210" text-anchor="end" font-size="11" fill="#8b9bb4">Motor Turns: 54.8</text>
+  <text x="222" y="210" font-size="11" fill="#8b9bb4"> • Fast 56:1 Trapezoidal Ramp)</text>
+  <text x="1200" y="210" text-anchor="end" font-size="11" fill="#8b9bb4">Motor Turns: 14.0</text>
   
   <!-- Graph background -->
-  <rect x="50" y="220" width="1180" height="145" rx="8" fill="#070a10" stroke="#24324c" stroke-width="1"/>
-  <!-- Grid line -->
-  <line x1="50" y1="292" x2="1230" y2="292" stroke="#1e293b" stroke-width="1"/>
+  <rect x="50" y="220" width="1180" height="135" rx="8" fill="#070a10" stroke="#24324c" stroke-width="1"/>
+  <!-- Grid center line -->
+  <line x1="50" y1="287" x2="1230" y2="287" stroke="#1e293b" stroke-width="1"/>
   
-  <!-- Target line (cyan) - step profile going to 90 -->
-  <polyline points="50,340 150,340 180,340 200,330 250,290 300,260 400,255 500,255 600,255 700,255 800,255 900,255 1000,255 1100,255 1200,255 1230,255" 
+  <!-- Target line (cyan) - crisp acceleration profile from 0 to 90 deg -->
+  <polyline points="50,335 180,335 220,330 320,270 420,245 1230,245" 
             fill="none" stroke="#38bdf8" stroke-width="2.5" stroke-linejoin="round"/>
   
-  <!-- Actual line (green) - follows with overshoot/settling -->
-  <polyline points="50,340 150,340 180,338 200,325 250,280 300,245 350,240 400,250 450,258 500,254 550,255 600,255 650,255 700,255 750,255 800,255 850,255 900,255 1000,255 1100,255 1200,255 1230,255" 
+  <!-- Actual line (green) - follows closely with feedforward, zero overshoot, locks at 90 -->
+  <polyline points="50,335 180,335 225,328 325,272 410,247 440,245 1230,245" 
             fill="none" stroke="#22c55e" stroke-width="2.5" stroke-linejoin="round"/>
 
   <!-- ===== TAB NAVIGATION ===== -->
-  <rect x="30" y="398" width="145" height="38" rx="8" fill="#38bdf8"/>
-  <text x="102" y="422" text-anchor="middle" font-size="13" font-weight="800" fill="#06121f">Control</text>
+  <rect x="30" y="388" width="145" height="38" rx="8" fill="#0f172a" stroke="#24324c" stroke-width="1"/>
+  <text x="102" y="412" text-anchor="middle" font-size="13" font-weight="700" fill="#e6edf7">Control</text>
   
-  <rect x="185" y="398" width="145" height="38" rx="8" fill="#0f172a" stroke="#24324c" stroke-width="1"/>
-  <text x="258" y="422" text-anchor="middle" font-size="13" font-weight="700" fill="#e6edf7">PID & Motion</text>
+  <rect x="185" y="388" width="165" height="38" rx="8" fill="#38bdf8"/>
+  <text x="267" y="412" text-anchor="middle" font-size="13" font-weight="800" fill="#06121f">PID &amp; Auto-Tune</text>
   
-  <rect x="340" y="398" width="145" height="38" rx="8" fill="#0f172a" stroke="#24324c" stroke-width="1"/>
-  <text x="413" y="422" text-anchor="middle" font-size="13" font-weight="700" fill="#e6edf7">Calibration</text>
+  <rect x="360" y="388" width="145" height="38" rx="8" fill="#0f172a" stroke="#24324c" stroke-width="1"/>
+  <text x="432" y="412" text-anchor="middle" font-size="13" font-weight="700" fill="#e6edf7">Calibration</text>
   
-  <rect x="495" y="398" width="145" height="38" rx="8" fill="#0f172a" stroke="#24324c" stroke-width="1"/>
-  <text x="568" y="422" text-anchor="middle" font-size="13" font-weight="700" fill="#e6edf7">Hardware</text>
+  <rect x="515" y="388" width="145" height="38" rx="8" fill="#0f172a" stroke="#24324c" stroke-width="1"/>
+  <text x="587" y="412" text-anchor="middle" font-size="13" font-weight="700" fill="#e6edf7">Hardware (56:1)</text>
 
-  <!-- ===== CONTROL TAB CONTENT ===== -->
-  <rect x="30" y="450" width="1220" height="330" rx="12" fill="#141b29" stroke="#24324c" stroke-width="1"/>
+  <!-- ===== PID & AUTO-TUNE TAB CONTENT ===== -->
+  <rect x="30" y="440" width="1220" height="380" rx="12" fill="#141b29" stroke="#24324c" stroke-width="1"/>
   
-  <!-- Mode Label -->
-  <text x="50" y="478" font-size="10" font-weight="700" fill="#8b9bb4" letter-spacing="0.5">OPERATING MODE</text>
+  <!-- Auto-PID Box -->
+  <text x="50" y="468" font-size="10" font-weight="700" fill="#8b9bb4" letter-spacing="0.5">7-STAGE FAST AUTO-PID (~30s: FRICTION + BACKLASH + KFF + ACCEL + CRISP STEPS + SPEED PID + 0-PWM LOCK)</text>
   
-  <!-- Mode Buttons -->
-  <rect x="50" y="490" width="140" height="36" rx="8" fill="#0f172a" stroke="#24324c" stroke-width="1"/>
-  <text x="120" y="513" text-anchor="middle" font-size="12" font-weight="700" fill="#8b9bb4">IDLE</text>
+  <rect x="50" y="480" width="1180" height="38" rx="8" fill="#090e18" stroke="#24324c" stroke-width="1"/>
+  <text x="65" y="504" font-size="12" font-family="monospace" fill="#22c55e">✓ FAST 30s TUNE OK! P:7.5 I:0.15 D:0.12 FF:0.55 | Rise:142ms | 0-PWM Silent Lock Verified</text>
   
-  <rect x="200" y="490" width="160" height="36" rx="8" fill="#38bdf8"/>
-  <text x="280" y="513" text-anchor="middle" font-size="12" font-weight="800" fill="#06121f">ANGLE LOCK</text>
-  
-  <rect x="370" y="490" width="140" height="36" rx="8" fill="#0f172a" stroke="#24324c" stroke-width="1"/>
-  <text x="440" y="513" text-anchor="middle" font-size="12" font-weight="700" fill="#8b9bb4">SPEED PID</text>
-  
-  <rect x="520" y="490" width="160" height="36" rx="8" fill="#0f172a" stroke="#24324c" stroke-width="1"/>
-  <text x="600" y="513" text-anchor="middle" font-size="12" font-weight="700" fill="#8b9bb4">MANUAL PWM</text>
+  <!-- Progress bar (100%) -->
+  <rect x="50" y="526" width="1180" height="8" rx="4" fill="#090e18" stroke="#24324c" stroke-width="1"/>
+  <rect x="50" y="526" width="1180" height="8" rx="4" fill="#22c55e"/>
 
-  <!-- Target Angle Slider -->
-  <text x="50" y="560" font-size="12" fill="#8b9bb4">Target Angle (°)</text>
-  <!-- Slider track -->
-  <rect x="230" y="550" width="700" height="8" rx="4" fill="#090e18" stroke="#24324c" stroke-width="1"/>
-  <!-- Slider fill -->
-  <rect x="230" y="550" width="525" height="8" rx="4" fill="#38bdf8" opacity="0.6"/>
-  <!-- Slider thumb -->
-  <circle cx="755" cy="554" r="10" fill="#38bdf8" stroke="#fff" stroke-width="2"/>
-  <!-- Number input -->
-  <rect x="960" y="540" width="86" height="30" rx="6" fill="#090e18" stroke="#24324c" stroke-width="1"/>
-  <text x="1003" y="560" text-anchor="middle" font-size="14" font-weight="700" fill="#e6edf7">90</text>
+  <!-- Buttons -->
+  <rect x="50" y="544" width="340" height="38" rx="8" fill="#f59e0b"/>
+  <text x="220" y="568" text-anchor="middle" font-size="12" font-weight="800" fill="#1f1300">START 30s FAST AUTO-PID</text>
+  
+  <rect x="405" y="544" width="220" height="38" rx="8" fill="#ef4444"/>
+  <text x="515" y="568" text-anchor="middle" font-size="12" font-weight="700" fill="#fff">RESET PID DEFAULT (56:1)</text>
 
-  <!-- Preset Buttons -->
-  <rect x="230" y="580" width="70" height="32" rx="8" fill="#1e293b" stroke="#24324c" stroke-width="1"/>
-  <text x="265" y="600" text-anchor="middle" font-size="11" font-weight="700" fill="#e6edf7">-180°</text>
-  
-  <rect x="310" y="580" width="65" height="32" rx="8" fill="#1e293b" stroke="#24324c" stroke-width="1"/>
-  <text x="343" y="600" text-anchor="middle" font-size="11" font-weight="700" fill="#e6edf7">-90°</text>
-  
-  <rect x="385" y="580" width="55" height="32" rx="8" fill="#38bdf8"/>
-  <text x="413" y="600" text-anchor="middle" font-size="11" font-weight="800" fill="#06121f">0°</text>
-  
-  <rect x="450" y="580" width="65" height="32" rx="8" fill="#1e293b" stroke="#24324c" stroke-width="1"/>
-  <text x="483" y="600" text-anchor="middle" font-size="11" font-weight="700" fill="#e6edf7">+90°</text>
-  
-  <rect x="525" y="580" width="70" height="32" rx="8" fill="#1e293b" stroke="#24324c" stroke-width="1"/>
-  <text x="560" y="600" text-anchor="middle" font-size="11" font-weight="700" fill="#e6edf7">+180°</text>
-  
-  <rect x="605" y="580" width="70" height="32" rx="8" fill="#1e293b" stroke="#24324c" stroke-width="1"/>
-  <text x="640" y="600" text-anchor="middle" font-size="11" font-weight="700" fill="#e6edf7">+360°</text>
+  <!-- Left Column: PID Parameters -->
+  <text x="50" y="612" font-size="11" font-weight="700" fill="#8b9bb4">Angle Lock PID + Feedforward</text>
 
-  <!-- Speed Limit Slider -->
-  <text x="50" y="646" font-size="12" fill="#8b9bb4">Speed Limit (°/s)</text>
-  <rect x="230" y="636" width="700" height="8" rx="4" fill="#090e18" stroke="#24324c" stroke-width="1"/>
-  <rect x="230" y="636" width="250" height="8" rx="4" fill="#38bdf8" opacity="0.4"/>
-  <circle cx="480" cy="640" r="8" fill="#38bdf8" stroke="#fff" stroke-width="1.5"/>
-  <rect x="960" y="626" width="86" height="30" rx="6" fill="#090e18" stroke="#24324c" stroke-width="1"/>
-  <text x="1003" y="646" text-anchor="middle" font-size="14" font-weight="700" fill="#e6edf7">180</text>
+  <!-- Parameter Rows -->
+  <text x="50" y="640" font-size="12" fill="#8b9bb4">Pos Kp (Stiffness)</text>
+  <rect x="220" y="622" width="120" height="28" rx="6" fill="#090e18" stroke="#24324c" stroke-width="1"/>
+  <text x="280" y="641" text-anchor="middle" font-size="13" font-weight="700" fill="#e6edf7">7.50</text>
 
-  <!-- Max PWM Slider -->
-  <text x="50" y="690" font-size="12" fill="#8b9bb4">Max PWM (Torque)</text>
-  <rect x="230" y="680" width="700" height="8" rx="4" fill="#090e18" stroke="#24324c" stroke-width="1"/>
-  <rect x="230" y="680" width="700" height="8" rx="4" fill="#38bdf8" opacity="0.4"/>
-  <circle cx="930" cy="684" r="8" fill="#38bdf8" stroke="#fff" stroke-width="1.5"/>
-  <rect x="960" y="670" width="86" height="30" rx="6" fill="#090e18" stroke="#24324c" stroke-width="1"/>
-  <text x="1003" y="690" text-anchor="middle" font-size="14" font-weight="700" fill="#e6edf7">255</text>
+  <text x="50" y="675" font-size="12" fill="#8b9bb4">Pos Ki (Steady Lock)</text>
+  <rect x="220" y="657" width="120" height="28" rx="6" fill="#090e18" stroke="#24324c" stroke-width="1"/>
+  <text x="280" y="676" text-anchor="middle" font-size="13" font-weight="700" fill="#e6edf7">0.15</text>
+
+  <text x="50" y="710" font-size="12" fill="#8b9bb4">Pos Kd (Vel Damping)</text>
+  <rect x="220" y="692" width="120" height="28" rx="6" fill="#090e18" stroke="#24324c" stroke-width="1"/>
+  <text x="280" y="711" text-anchor="middle" font-size="13" font-weight="700" fill="#e6edf7">0.12</text>
+
+  <text x="50" y="745" font-size="12" fill="#8b9bb4">Feedforward Kff</text>
+  <rect x="220" y="727" width="120" height="28" rx="6" fill="#090e18" stroke="#24324c" stroke-width="1"/>
+  <text x="280" y="746" text-anchor="middle" font-size="13" font-weight="700" fill="#38bdf8">0.55</text>
+
+  <!-- Middle Column: Motion Limits -->
+  <text x="420" y="612" font-size="11" font-weight="700" fill="#8b9bb4">Motion Profile Limits</text>
+
+  <text x="420" y="640" font-size="12" fill="#8b9bb4">Accel Limit (°/s²)</text>
+  <rect x="580" y="622" width="120" height="28" rx="6" fill="#090e18" stroke="#24324c" stroke-width="1"/>
+  <text x="640" y="641" text-anchor="middle" font-size="13" font-weight="700" fill="#e6edf7">900</text>
+
+  <text x="420" y="675" font-size="12" fill="#8b9bb4">PWM Slew (Response)</text>
+  <rect x="580" y="657" width="120" height="28" rx="6" fill="#090e18" stroke="#24324c" stroke-width="1"/>
+  <text x="640" y="676" text-anchor="middle" font-size="13" font-weight="700" fill="#e6edf7">24</text>
+
+  <text x="420" y="710" font-size="12" fill="#8b9bb4">Deadzone Tol (°)</text>
+  <rect x="580" y="692" width="120" height="28" rx="6" fill="#090e18" stroke="#24324c" stroke-width="1"/>
+  <text x="640" y="711" text-anchor="middle" font-size="13" font-weight="700" fill="#e6edf7">0.50</text>
+
+  <!-- Right Column: Speed Mode PID -->
+  <text x="780" y="612" font-size="11" font-weight="700" fill="#8b9bb4">Speed Mode &amp; Filtering</text>
+
+  <text x="780" y="640" font-size="12" fill="#8b9bb4">Speed Kp</text>
+  <rect x="940" y="622" width="120" height="28" rx="6" fill="#090e18" stroke="#24324c" stroke-width="1"/>
+  <text x="1000" y="641" text-anchor="middle" font-size="13" font-weight="700" fill="#e6edf7">1.40</text>
+
+  <text x="780" y="675" font-size="12" fill="#8b9bb4">Speed Ki</text>
+  <rect x="940" y="657" width="120" height="28" rx="6" fill="#090e18" stroke="#24324c" stroke-width="1"/>
+  <text x="1000" y="676" text-anchor="middle" font-size="13" font-weight="700" fill="#e6edf7">2.50</text>
+
+  <text x="780" y="710" font-size="12" fill="#8b9bb4">Vel Filter Alpha</text>
+  <rect x="940" y="692" width="120" height="28" rx="6" fill="#090e18" stroke="#24324c" stroke-width="1"/>
+  <text x="1000" y="711" text-anchor="middle" font-size="13" font-weight="700" fill="#e6edf7">0.30</text>
+
+  <!-- Save button across bottom -->
+  <rect x="50" y="770" width="1180" height="38" rx="8" fill="#22c55e"/>
+  <text x="640" y="794" text-anchor="middle" font-size="13" font-weight="800" fill="#041a0d">APPLY &amp; SAVE TO FLASH (NVS)</text>
 </svg>
