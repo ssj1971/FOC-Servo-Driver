@@ -39,8 +39,8 @@
     <rect width="1320" height="58" rx="12" fill="#0f172a"/>
     <circle cx="34" cy="29" r="14" fill="#38bdf8"/>
     <text x="34" y="35" text-anchor="middle" font-size="16" font-weight="900" fill="#041a0d">⚡</text>
-    <text x="62" y="36" font-size="20" font-weight="800" fill="#ffffff">SmartServo V5.3 — Visual Wiring Diagram</text>
-    <text x="560" y="36" font-size="13" font-weight="600" fill="#94a3b8">ESP32-S3 (N16R8) · BTS7960 (43A) · AS5600 (400kHz I2C) · 37GB-520 (56:1 Fast)</text>
+    <text x="62" y="36" font-size="20" font-weight="800" fill="#ffffff">FOC Servo Driver V5.3 — Industrial Wiring &amp; Power Topology</text>
+    <text x="680" y="36" font-size="13" font-weight="600" fill="#94a3b8">ESP32-S3 (N16R8) · BTS7960 (43A) · AS5600 (400kHz I2C) · 37GB-520 (56:1 Fast)</text>
     
     <rect x="1170" y="14" width="130" height="30" rx="15" fill="#22c55e"/>
     <text x="1235" y="33" text-anchor="middle" font-size="11" font-weight="800" fill="#041a0d">400 kHz I2C Fast</text>

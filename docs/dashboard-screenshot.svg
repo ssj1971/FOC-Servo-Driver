@@ -10,7 +10,7 @@
   <rect width="1280" height="840" fill="url(#bg)"/>
 
   <!-- ===== HEADER ===== -->
-  <text x="30" y="38" font-size="20" font-weight="800" fill="#e6edf7">SmartServo V5.3 (56:1 Fast @ 400kHz)</text>
+  <text x="30" y="38" font-size="20" font-weight="800" fill="#e6edf7">FOC Servo Driver V5.3 (Industrial Precision Motion)</text>
   
   <!-- Badges -->
   <rect x="30" y="50" width="105" height="24" rx="12" fill="#1e293b" stroke="#22c55e" stroke-width="1.5"/>

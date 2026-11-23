@@ -29,10 +29,10 @@ const int   DEF_SLEW       = 24;      // Fast response while still protecting ge
 
 // ================= CONTROL MODES =================
 enum CtrlMode : uint8_t {
-  MODE_IDLE   = 0,
-  MODE_ANGLE  = 1,
-  MODE_SPEED  = 2,
-  MODE_MANUAL = 3
+  MODE_IDLE   = 0, // Free-wheel / Low-Power Standby
+  MODE_ANGLE  = 1, // Closed-Loop Precision Position Servo
+  MODE_SPEED  = 2, // Closed-Loop Velocity / Speed Regulator
+  MODE_MANUAL = 3  // Open-Loop Direct Effort / Torque PWM
 };
 
 // ================= TUNABLE PARAMETERS (SAVED TO NVS) =================
@@ -940,7 +940,7 @@ const char index_html[] PROGMEM = R"rawliteral(
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>SmartServo V5.3 (56:1 Fast)</title>
+<title>FOC Servo Driver — Industrial Precision Motion Controller</title>
 <style>
   :root{--bg:#0b0f17;--card:#141b29;--bdr:#24324c;--txt:#e6edf7;--mut:#8b9bb4;--acc:#38bdf8;--ok:#22c55e;--warn:#f59e0b;--err:#ef4444;}
   *{box-sizing:border-box;font-family:system-ui,-apple-system,sans-serif;}
@@ -979,7 +979,7 @@ const char index_html[] PROGMEM = R"rawliteral(
 <div class="wrap">
   <div class="top">
     <div>
-      <h2>SmartServo V5.3 (56:1 Fast @ 400kHz)</h2>
+      <h2>FOC Servo Driver V5.3 (Industrial Precision Motion)</h2>
       <span id="encBadge" class="badge">I2C: OK</span>
       <span id="hzBadge" class="badge">Loop: -- Hz</span>
       <span id="lockBadge" class="badge">LOCKED (0 PWM)</span>
@@ -1338,7 +1338,7 @@ void setup() {
   delay(100);
   WiFi.mode(WIFI_AP_STA);
   WiFi.setTxPower(WIFI_POWER_17dBm);
-  WiFi.softAP("SmartServo_V2", "12345678");
+  WiFi.softAP("FOC_Servo_Driver", "12345678");
   WiFi.begin(WIFI_SSID, WIFI_PASS);
 
   Serial.printf("Connecting to '%s'", WIFI_SSID);
@@ -1352,11 +1352,11 @@ void setup() {
     Serial.print("STA ('iot') -> http://");
     Serial.println(WiFi.localIP());
   }
-  Serial.print("AP ('SmartServo_V2', pass 12345678) -> http://");
+  Serial.print("AP ('FOC_Servo_Driver', pass 12345678) -> http://");
   Serial.println(WiFi.softAPIP());
 
   // Start ~1 kHz Control Loop on Core 1
-  xTaskCreatePinnedToCore(controlLoopTask, "ServoV53_56", 6144, NULL, 1, &controlTaskHandle, 1);
+  xTaskCreatePinnedToCore(controlLoopTask, "FOCDriver_1kHz", 6144, NULL, 1, &controlTaskHandle, 1);
 
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *r){ r->send_P(200, "text/html", index_html); });
 
